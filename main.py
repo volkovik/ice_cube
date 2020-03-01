@@ -7,6 +7,10 @@ with open("config.json") as f:
     cfg = json.load(f)
 
 client = commands.Bot(command_prefix=".")
+cogs = {"information"}  # Множество модулей
+
+for cog in cogs:
+    client.load_extension(f"cogs.{cog}")  # Загрузка модуля из множества
 
 
 @client.event
