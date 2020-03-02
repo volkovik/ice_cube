@@ -1,4 +1,6 @@
 import discord
+import json
+import mysql.connector
 from utilities import ConvertEnums
 from discord.ext import commands
 
@@ -7,6 +9,9 @@ class Information(commands.Cog):
     def __init__(self, bot):
         self.client = bot
         self.color = 0xFFCC4D
+
+        with open("config.json") as f:
+            self.config = json.load(f)
 
     @commands.command(name="user")
     async def user_information(self, ctx, user: commands.MemberConverter = None):
@@ -32,9 +37,27 @@ class Information(commands.Cog):
             activity = f"**{ConvertEnums.activity_type(user.activity.type)}** " \
                        f"{user.activity.name}\n" if user.activity else ""
 
+        db = mysql.connector.connect(**self.config["database"])
+        cursor = db.cursor()
+
+        data_sql = {"user_id": user.id}
+
+        cursor.execute("SELECT bio FROM users WHERE id=%(user_id)s", data_sql)
+        result = cursor.fetchone()
+        bio = result[0] if result is not None else None
+
+        cursor.close()
+        db.close()
+
+        if bio is None:
+            if user == ctx.author:
+                bio = "Вы можете вести свою информацию здесь с помощью команды `.bio`"
+            else:
+                bio = "Пользователь ещё не ввёл информацию здесь"
+
         message = discord.Embed(
             title=f"Информация о \"{user.display_name}\"",
-            description="Пустое поле.",
+            description=bio,
             color=self.color
         )
         message.add_field(
@@ -48,6 +71,90 @@ class Information(commands.Cog):
         message.set_footer(text=f"ID: {user.id}")
 
         await ctx.send(embed=message)
+
+    @user_information.error
+    async def error_user_information(self, ctx, error):
+        if isinstance(error, commands.BadArgument):
+            message = discord.Embed(
+                title=":x: Ошибка",
+                description="Я не нашёл указанного участника на сервере",
+                color=0xDD2E44
+            )
+
+            await ctx.send(embed=message)
+
+    @commands.command(name="bio")
+    async def change_bio(self, ctx, *, text=None):
+        """
+        Редактирование описания в профиле пользователя
+
+        :param text: Некоторый текст для описания
+        """
+
+        db = mysql.connector.connect(**self.config["database"])
+        db.autocommit = True
+        cursor = db.cursor()
+
+        data_sql = {
+            "user_id": ctx.author.id,
+            "bio": text
+        }
+
+        cursor.execute("SELECT bio FROM users WHERE id=%(user_id)s", data_sql)
+        result = cursor.fetchone()
+        last_text = result[0] if result is not None else None
+
+        if text is not None:
+            if len(text) > 255:
+                message = discord.Embed(
+                    title=":x: Ошибка",
+                    description="Я не могу поставить текст больше 255 символов",
+                    color=0xDD2E44
+                )
+
+                cursor.close()
+                db.close()
+
+                return await ctx.send(embed=message)
+            elif text == last_text:
+                message = discord.Embed(
+                    title=":x: Ошибка",
+                    description="Введёный текст идентичен вашему описанию в профиле",
+                    color=0xDD2E44
+                )
+
+                cursor.close()
+                db.close()
+                return await ctx.send(embed=message)
+
+            cursor.execute("INSERT INTO users(id, bio) VALUES(%(user_id)s, %(bio)s)\n"
+                           "ON DUPLICATE KEY UPDATE bio=%(bio)s", data_sql)
+
+            message = discord.Embed(
+                title=":white_check_mark: Успешно",
+                description="Я изменил описание в вашем профиле",
+                color=0x77B255
+            )
+        else:
+            if last_text is None:
+                message = discord.Embed(
+                    title=":x: Ошибка",
+                    description="Вы не ввели текст",
+                    color=0xDD2E44
+                )
+            else:
+                cursor.execute("DELETE FROM users WHERE id=%(user_id)s", data_sql)
+
+                message = discord.Embed(
+                    title=":white_check_mark: Успешно",
+                    description="Я удалил описание в вашем профиле",
+                    color=0x77B255
+                )
+
+        await ctx.send(embed=message)
+
+        cursor.close()
+        db.close()
 
 
 def setup(bot):
