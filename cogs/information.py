@@ -1,6 +1,7 @@
 import discord
 import json
 import mysql.connector
+from discord import Status
 from utilities import ConvertEnums
 from discord.ext import commands
 
@@ -155,6 +156,71 @@ class Information(commands.Cog):
 
         cursor.close()
         db.close()
+
+    @commands.command(name="server")
+    async def server_information(self, ctx):
+        """
+        Показывает некоторую информацию о сервере
+        """
+
+        server = ctx.guild
+
+        region = ConvertEnums.voice_region(server.region)
+        verification = ConvertEnums.verification_level(server.verification_level)
+        security = str(verification) + (" (2FA)" if server.mfa_level is True else "")
+        created_at = server.created_at.strftime("%d.%m.%Y, %H:%M:%S")
+
+        def members_counter():
+            members = server.members
+
+            bots = len([x for x in members if x.bot])
+            users = len(members) - bots
+            online = len([x for x in members if x.status is Status.online and not x.bot])
+            idle = len([x for x in members if x.status is Status.idle and not x.bot])
+            dnd = len([x for x in members if x.status is (Status.dnd or Status.do_not_disturb) and not x.bot])
+            offline = len([x for x in members if x.status is (Status.offline or Status.invisible) and not x.bot])
+
+            info = f"Пользователей: **{users}**"
+            info += f"\nОнлайн: **{online}**" if online != 0 else ""
+            info += f"\nНеактивны: **{idle}**" if idle != 0 else ""
+            info += f"\nНе беспокоить: **{dnd}**" if dnd != 0 else ""
+            info += f"\nОффлайн: **{offline}**" if offline != 0 else ""
+            info += f"\nБотов: **{bots}**"
+
+            return info
+
+        def channels_counter():
+            text = len(server.text_channels)
+            voice = len(server.voice_channels)
+
+            info = f"Всего: **{voice + text}**" \
+                   f"\nТекстовых: **{text}**"
+            info += f"\nГолосовых: **{voice}**"
+
+            return info
+
+        message = discord.Embed(
+            title=f"Информация о \"{server.name}\"",
+            description=f"**Владелец:** {server.owner}"
+                        f"\n**Регион:** {region}"
+                        f"\n**Верификация:** {security}"
+                        f"\n**Дата создания:** {created_at}",
+            color=self.color
+        )
+        message.add_field(
+            name="Участники",
+            value=members_counter(),
+            inline=True
+        )
+        message.add_field(
+            name="Каналы",
+            value=channels_counter(),
+            inline=True
+        )
+        message.set_thumbnail(
+            url=server.icon_url_as(static_format="jpg", size=512))
+
+        await ctx.send(embed=message)
 
 
 def setup(bot):
