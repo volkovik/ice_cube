@@ -17,9 +17,9 @@ for cog in cogs:
 
 @client.event
 async def on_ready():
-    await client.change_presence(activity=discord.Streaming(name="Напиши .help", url="https://twitch.tv/volkovik/"))
+    await client.change_presence(activity=discord.Streaming(name=".help", url="https://twitch.tv/volkovik/"))
 
-    print(f"Бот был подключён как \"{client.user}\"")
+    print(f"Бот {client.user.name} был запущен")
 
 
 if __name__ == '__main__':

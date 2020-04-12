@@ -6,7 +6,7 @@ from utilities import ConvertEnums
 from discord.ext import commands
 
 
-class Information(commands.Cog):
+class Information(commands.Cog, name="Информация"):
     def __init__(self, bot):
         self.client = bot
         self.color = 0xFFCC4D
@@ -17,9 +17,7 @@ class Information(commands.Cog):
     @commands.command(name="user")
     async def user_information(self, ctx, user: commands.MemberConverter = None):
         """
-        Показывает некоторую информацию о пользователе
-
-        :param user: упоминнание или ID пользователя
+        Некоторая информация о пользователе
         """
 
         if user is None:
@@ -87,9 +85,7 @@ class Information(commands.Cog):
     @commands.command(name="bio")
     async def change_bio(self, ctx, *, text=None):
         """
-        Редактирование описания в профиле пользователя
-
-        :param text: Некоторый текст для описания
+        Редактирование описания в профиле
         """
 
         db = mysql.connector.connect(**self.config["database"])
@@ -160,7 +156,7 @@ class Information(commands.Cog):
     @commands.command(name="server")
     async def server_information(self, ctx):
         """
-        Показывает некоторую информацию о сервере
+        Основная информация о сервере
         """
 
         server = ctx.guild
