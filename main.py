@@ -1,5 +1,6 @@
 import discord
 import json
+from utilities import CustomHelpCommand
 from discord.ext import commands
 
 # Загрузка настроек бота
@@ -7,6 +8,7 @@ with open("config.json") as f:
     cfg = json.load(f)
 
 client = commands.Bot(command_prefix=".")
+client.help_command = CustomHelpCommand()
 cogs = {"information"}  # Множество модулей
 
 for cog in cogs:

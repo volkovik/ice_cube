@@ -1,9 +1,12 @@
+import discord
+from itertools import groupby
 from discord import ActivityType, Status, VoiceRegion, VerificationLevel
+from discord.ext.commands import HelpCommand
 
 
 class ConvertEnums:
     """
-    Конвертация Enums из discord.py на понятный текст
+    Конвертация Enums из discord.py на русский язык
     """
 
     @staticmethod
@@ -60,3 +63,113 @@ class ConvertEnums:
             VerificationLevel.high or VerificationLevel.table_flip: "Высокая",
             VerificationLevel.extreme or VerificationLevel.double_table_flip: "Экстримальная"
         }.get(arg, arg)
+
+
+class CustomHelpCommand(HelpCommand):
+    """
+    Производный класс, который формирует вид команды help
+    """
+
+    def __init__(self, **options):
+        """
+        Настройка команды help
+
+        :param **options: некоторые настройки
+        """
+
+        self.width = options.pop('width', 80)  # максимальное количество символов для описания
+        self.sort_commands = options.pop('sort_commands', True)  # сортировка команд и категорий по алфавиту
+        self.commands_heading = options.pop('commands_heading', "Команды")  # название колонки для групп команд
+        self.embed = discord.Embed()  # Embed-шаблон
+
+        super().__init__(**options)
+
+        self.command_attrs["hidden"] = True  # не показывать команды, которые заведомо скрыты
+
+    def shorten_text(self, text):
+        """
+        Сокращение строки до определённого количества символов
+
+        :param text: строка
+        :return: обработанная строка или та же строка, если строка меньше или равна лимиту символов
+        """
+
+        if len(text) > self.width:
+            return text[:self.width - 3] + '...'
+
+        return text
+
+    def get_destination(self):
+        """
+        Получение канала для отправки сообщения
+
+        :return: текстовый канал сервера
+        """
+
+        ctx = self.context
+
+        return ctx.channel
+
+    async def prepare_help_command(self, ctx, command=None):
+        """
+        Очистка Embed-шаблона
+        """
+
+        self.embed.title = ""
+        self.embed.description = ""
+        self.embed.clear_fields()
+
+    async def send_bot_help(self, mapping):
+        """
+        Отправка списка команд бота в текстовый канал
+        """
+
+        ctx = self.context
+        prefix = ctx.prefix
+        bot = ctx.bot
+
+        # Удаленяем все команды без категории и сортируем по категориям
+        commands = groupby(filter(lambda c: c.cog_name is not None, bot.commands), key=lambda c: c.cog_name + ":")
+
+        self.embed.title = self.commands_heading
+
+        for category, cmds in commands:
+            commands_descriptions = []
+
+            for cmd in cmds:
+                # Если команда является лишь второстепенной, то вывести её вместе с родительской командой
+                if cmd.parent is not None:
+                    commands_descriptions.append(f"{prefix}{cmd.parent}{cmd} - {cmd.short_doc}")
+                else:
+                    commands_descriptions.append(f"{prefix}{cmd} - {cmd.short_doc}")
+
+            self.embed.add_field(
+                name=category,
+                value="\n".join(commands_descriptions),
+                inline=False
+            )
+
+        await ctx.send(embed=self.embed)
+
+    async def command_not_found(self, name: str):
+        """
+        Текст ошибки, при ненахождении введённой команды
+
+        :param name: название команды
+        :return: сообщение об ошибке
+        """
+
+        return f"Я не нашёл команду `{name}`"
+
+    async def send_error_message(self, error):
+        """
+        Отправка ошибок, вызванные использованием команды
+
+        :param error: сообщение об ошибке
+        """
+
+        self.embed.title = ":x: Ошибка"
+        self.embed.description = error
+        self.embed.colour = 0xDD2E44
+
+        await self.get_destination().send(embed=self.embed)
