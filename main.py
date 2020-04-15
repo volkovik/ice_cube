@@ -9,7 +9,7 @@ with open("config.json") as f:
 
 client = commands.Bot(command_prefix=".")
 client.help_command = CustomHelpCommand()
-cogs = {"information"}  # Множество модулей
+cogs = {"information", "fun"}  # Множество модулей
 
 for cog in cogs:
     client.load_extension(f"cogs.{cog}")  # Загрузка модуля из множества
