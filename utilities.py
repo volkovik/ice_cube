@@ -94,10 +94,12 @@ class CustomHelpCommand(HelpCommand):
         :return: обработанная строка или та же строка, если строка меньше или равна лимиту символов
         """
 
-        if len(text) > self.width:
-            return text[:self.width - 3] + '...'
+        text = text[0].lower() + text[1:]  # сделать первую букву маленькой
 
-        return text
+        if len(text) > self.width:
+            return text[0:self.width - 3] + '...'
+        else:
+            return text
 
     def get_destination(self):
         """
@@ -115,9 +117,21 @@ class CustomHelpCommand(HelpCommand):
         Очистка Embed-шаблона
         """
 
-        self.embed.title = ""
-        self.embed.description = ""
-        self.embed.clear_fields()
+        self.embed = discord.Embed()
+
+    def get_command_signature(self, command):
+        """
+        Получение строки с полной командой
+
+        :param command: команда бота
+        :return: строка c информацией о команде
+        """
+
+        # Если команда является лишь второстепенной, то вывести её вместе с родительской командой
+        if command.parent is not None:
+            return f"{self.clean_prefix}{command.parent} {command}"
+        else:
+            return f"{self.clean_prefix}{command}"
 
     async def send_bot_help(self, mapping):
         """
@@ -125,11 +139,9 @@ class CustomHelpCommand(HelpCommand):
         """
 
         ctx = self.context
-        prefix = ctx.prefix
-        bot = ctx.bot
 
         # Удаленяем все команды без категории и сортируем по категориям
-        commands = groupby(filter(lambda c: c.cog_name is not None, bot.commands), key=lambda c: c.cog_name + ":")
+        commands = groupby(filter(lambda c: c.cog_name is not None, ctx.bot.commands), key=lambda c: c.cog_name + ":")
 
         self.embed.title = self.commands_heading
 
@@ -137,11 +149,7 @@ class CustomHelpCommand(HelpCommand):
             commands_descriptions = []
 
             for cmd in cmds:
-                # Если команда является лишь второстепенной, то вывести её вместе с родительской командой
-                if cmd.parent is not None:
-                    commands_descriptions.append(f"{prefix}{cmd.parent}{cmd} - {cmd.short_doc}")
-                else:
-                    commands_descriptions.append(f"{prefix}{cmd} - {cmd.short_doc}")
+                commands_descriptions.append(f"{self.get_command_signature(cmd)} - {self.shorten_text(cmd.short_doc)}")
 
             self.embed.add_field(
                 name=category,
@@ -149,9 +157,29 @@ class CustomHelpCommand(HelpCommand):
                 inline=False
             )
 
-        await ctx.send(embed=self.embed)
+        await self.get_destination().send(embed=self.embed)
 
-    async def command_not_found(self, name: str):
+    async def send_command_help(self, command):
+        """
+        Отправка информации команды в тектовый канал
+
+        :param command: команда бота
+        """
+
+        self.embed.title = f"Команда \"{command.name}\""
+        signature = command.signature
+
+        if signature:
+            self.embed.description = f"{self.get_command_signature(command)} {signature} - " \
+                                     f"{self.shorten_text(command.short_doc)}"
+        else:
+            self.embed.description = f"{self.get_command_signature(command)} - {self.shorten_text(command.short_doc)}"
+
+        self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
+
+        await self.context.send(embed=self.embed)
+
+    async def command_not_found(self, name):
         """
         Текст ошибки, при ненахождении введённой команды
 

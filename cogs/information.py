@@ -14,10 +14,10 @@ class Information(commands.Cog, name="Информация"):
         with open("config.json") as f:
             self.config = json.load(f)
 
-    @commands.command(name="user")
+    @commands.command(name="user", usage="[пользователь]")
     async def user_information(self, ctx, user: commands.MemberConverter = None):
         """
-        Некоторая информация о пользователе
+        Профиль пользователя
         """
 
         if user is None:
@@ -82,7 +82,7 @@ class Information(commands.Cog, name="Информация"):
 
             await ctx.send(embed=message)
 
-    @commands.command(name="bio")
+    @commands.command(name="bio", usage="<текст>")
     async def change_bio(self, ctx, *, text=None):
         """
         Редактирование описания в профиле
