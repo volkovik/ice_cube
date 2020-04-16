@@ -2,6 +2,8 @@ import discord
 from random import choice
 from discord.ext import commands
 
+from utilities import ErrorMessage
+
 
 class Fun(commands.Cog, name="Развлечения"):
     def __init__(self, bot):
@@ -25,11 +27,7 @@ class Fun(commands.Cog, name="Развлечения"):
                    ":x: По моим данным — «нет»", ":x: Перспективы не очень хорошие", ":x: Весьма сомнительно")
 
         if question is None:
-            message = discord.Embed(
-                title=":x: Ошибка",
-                description="Вы не ввели вопрос",
-                color=0xDD2E44
-            )
+            message = ErrorMessage("Вы не ввели вопрос")
         else:
             message = discord.Embed(
                 title=":8ball: 8ball",

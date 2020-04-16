@@ -1,18 +1,16 @@
 import discord
-import json
 import mysql.connector
 from discord import Status
-from utilities import ConvertEnums
 from discord.ext import commands
+
+from main import CONFIG
+from utilities import ConvertEnums, ErrorMessage, SuccessfulMessage
 
 
 class Information(commands.Cog, name="Информация"):
     def __init__(self, bot):
         self.client = bot
         self.color = 0xFFCC4D
-
-        with open("config.json") as f:
-            self.config = json.load(f)
 
     @commands.command(name="user", usage="[пользователь]")
     async def user_information(self, ctx, user: commands.MemberConverter = None):
@@ -36,7 +34,7 @@ class Information(commands.Cog, name="Информация"):
             activity = f"**{ConvertEnums.activity_type(user.activity.type)}** " \
                        f"{user.activity.name}\n" if user.activity else ""
 
-        db = mysql.connector.connect(**self.config["database"])
+        db = mysql.connector.connect(**CONFIG["database"])
         cursor = db.cursor()
 
         data_sql = {"user_id": user.id}
@@ -74,13 +72,7 @@ class Information(commands.Cog, name="Информация"):
     @user_information.error
     async def error_user_information(self, ctx, error):
         if isinstance(error, commands.BadArgument):
-            message = discord.Embed(
-                title=":x: Ошибка",
-                description="Я не нашёл указанного участника на сервере",
-                color=0xDD2E44
-            )
-
-            await ctx.send(embed=message)
+            await ctx.send(embed=ErrorMessage("Я не нашёл указанного участника на сервере"))
 
     @commands.command(name="bio", usage="<текст>")
     async def change_bio(self, ctx, *, text=None):
@@ -88,7 +80,7 @@ class Information(commands.Cog, name="Информация"):
         Редактирование описания в профиле
         """
 
-        db = mysql.connector.connect(**self.config["database"])
+        db = mysql.connector.connect(**CONFIG["database"])
         db.autocommit = True
         cursor = db.cursor()
 
@@ -103,22 +95,14 @@ class Information(commands.Cog, name="Информация"):
 
         if text is not None:
             if len(text) > 255:
-                message = discord.Embed(
-                    title=":x: Ошибка",
-                    description="Я не могу поставить текст больше 255 символов",
-                    color=0xDD2E44
-                )
+                message = ErrorMessage("Я не могу поставить текст больше 255 символов")
 
                 cursor.close()
                 db.close()
 
                 return await ctx.send(embed=message)
             elif text == last_text:
-                message = discord.Embed(
-                    title=":x: Ошибка",
-                    description="Введёный текст идентичен вашему описанию в профиле",
-                    color=0xDD2E44
-                )
+                message = ErrorMessage("Введёный текст идентичен вашему описанию в профиле")
 
                 cursor.close()
                 db.close()
@@ -127,26 +111,14 @@ class Information(commands.Cog, name="Информация"):
             cursor.execute("INSERT INTO users(id, bio) VALUES(%(user_id)s, %(bio)s)\n"
                            "ON DUPLICATE KEY UPDATE bio=%(bio)s", data_sql)
 
-            message = discord.Embed(
-                title=":white_check_mark: Успешно",
-                description="Я изменил описание в вашем профиле",
-                color=0x77B255
-            )
+            message = SuccessfulMessage("Я изменил описание в вашем профиле")
         else:
             if last_text is None:
-                message = discord.Embed(
-                    title=":x: Ошибка",
-                    description="Вы не ввели текст",
-                    color=0xDD2E44
-                )
+                message = ErrorMessage("Вы не ввели текст")
             else:
                 cursor.execute("DELETE FROM users WHERE id=%(user_id)s", data_sql)
 
-                message = discord.Embed(
-                    title=":white_check_mark: Успешно",
-                    description="Я удалил описание в вашем профиле",
-                    color=0x77B255
-                )
+                message = SuccessfulMessage("Я удалил описание в вашем профиле")
 
         await ctx.send(embed=message)
 

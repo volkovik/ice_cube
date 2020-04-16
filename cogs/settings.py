@@ -1,7 +1,9 @@
 import discord
-from main import cfg
 import mysql.connector
 from discord.ext import commands
+
+from main import CONFIG
+from utilities import ErrorMessage, SuccessfulMessage
 
 
 class Settings(commands.Cog, name="Настройки"):
@@ -17,7 +19,7 @@ class Settings(commands.Cog, name="Настройки"):
 
         server = ctx.guild
 
-        db = mysql.connector.connect(**cfg["database"])
+        db = mysql.connector.connect(**CONFIG["database"])
         db.autocommit = True
         cursor = db.cursor()
 
@@ -32,22 +34,14 @@ class Settings(commands.Cog, name="Настройки"):
 
         if prefix is not None:
             if len(prefix) > 16:
-                message = discord.Embed(
-                    title=":x: Ошибка",
-                    description="Я не могу поставить префикс, который больше 16 символов",
-                    color=0xDD2E44
-                )
+                message = ErrorMessage("Я не могу поставить префикс, который больше 16 символов")
 
                 cursor.close()
                 db.close()
 
                 return await ctx.send(embed=message)
             elif prefix == last_prefix:
-                message = discord.Embed(
-                    title=":x: Ошибка",
-                    description="Вы уже используете данный префикс",
-                    color=0xDD2E44
-                )
+                message = ErrorMessage("Вы уже используете данный префикс")
 
                 cursor.close()
                 db.close()
@@ -59,11 +53,7 @@ class Settings(commands.Cog, name="Настройки"):
                 cursor.execute("INSERT INTO servers(id, prefix) VALUES(%(server_id)s, %(prefix)s)\n"
                                "ON DUPLICATE KEY UPDATE prefix=%(prefix)s", data_sql)
 
-            message = discord.Embed(
-                title=":white_check_mark: Выполнено",
-                description="Я успешно изменил префикс",
-                color=0x77B255
-            )
+            message = SuccessfulMessage("Я успешно изменил префикс")
         else:
             if last_prefix == '.' or last_prefix is None:
                 message = discord.Embed(
@@ -74,11 +64,7 @@ class Settings(commands.Cog, name="Настройки"):
             else:
                 cursor.execute("DELETE FROM servers WHERE id=%(server_id)s", data_sql)
 
-                message = discord.Embed(
-                    title=":white_check_mark: Выполнено",
-                    description="Я успешно сбросил префикс на стандартный",
-                    color=0x77B255
-                )
+                message = SuccessfulMessage("Я успешно сбросил префикс на стандартный")
 
         await ctx.send(embed=message)
 

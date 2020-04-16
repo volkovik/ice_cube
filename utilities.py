@@ -1,7 +1,27 @@
 import discord
 from itertools import groupby
-from discord import ActivityType, Status, VoiceRegion, VerificationLevel
+from discord import ActivityType, Status, VoiceRegion, VerificationLevel, Embed
 from discord.ext.commands import HelpCommand
+
+
+class ErrorMessage(Embed):
+    """
+    Embed сообщение об ошибке
+
+    :param message: текст сообщения
+    """
+    def __init__(self, message):
+        super().__init__(title=":x: Ошибка", description=message, color=0xDD2E44)
+
+
+class SuccessfulMessage(Embed):
+    """
+    Embed сообщение об успешной работе
+
+    :param message: текст сообщения
+    """
+    def __init__(self, message):
+        super().__init__(title=":white_check_mark: Выполнено", description=message, color=0x77B255)
 
 
 class ConvertEnums:

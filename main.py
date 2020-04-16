@@ -6,7 +6,7 @@ from discord.ext import commands
 
 # Загрузка настроек бота
 with open("config.json") as f:
-    cfg = json.load(f)
+    CONFIG = json.load(f)
 
 
 def get_prefix(bot, message):
@@ -21,7 +21,7 @@ def get_prefix(bot, message):
     prefix = "."
 
     if message.guild:
-        db = mysql.connector.connect(**cfg["database"])
+        db = mysql.connector.connect(**CONFIG["database"])
         cursor = db.cursor()
 
         data_sql = {"server_id": message.guild.id}
@@ -54,4 +54,4 @@ async def on_ready():
 
 
 if __name__ == '__main__':
-    client.run(cfg["token"])
+    client.run(CONFIG["token"])
