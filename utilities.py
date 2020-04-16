@@ -147,7 +147,10 @@ class CustomHelpCommand(HelpCommand):
         ctx = self.context
 
         # Удаленяем все команды без категории и сортируем по категориям
-        commands = groupby(filter(lambda c: c.cog_name is not None, ctx.bot.commands), key=lambda c: c.cog_name + ":")
+        get_category = lambda c: c.cog_name + ":"
+        filtered = await self.filter_commands(filter(lambda c: c.cog_name is not None, ctx.bot.commands), sort=True,
+                                              key=get_category)
+        commands = groupby(filtered, key=get_category)
 
         self.embed.title = self.commands_heading
 
