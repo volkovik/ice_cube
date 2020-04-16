@@ -38,9 +38,9 @@ def get_prefix(bot, message):
     return commands.when_mentioned_or(prefix)(bot, message)
 
 
-client = commands.Bot(command_prefix=".")
+client = commands.Bot(command_prefix=get_prefix)
 client.help_command = CustomHelpCommand()
-cogs = {"information", "fun"}  # Множество модулей
+cogs = {"information", "fun", "settings"}  # Множество модулей
 
 for cog in cogs:
     client.load_extension(f"cogs.{cog}")  # Загрузка модуля из множества
