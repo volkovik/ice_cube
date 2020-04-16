@@ -119,19 +119,25 @@ class CustomHelpCommand(HelpCommand):
 
         self.embed = discord.Embed()
 
-    def get_command_signature(self, command):
+    def get_command_signature(self, command, args=False):
         """
-        Получение строки с полной командой
+        Получение строки с командой, текущим префиксом и, если usage=True, ещё аргументы команды
 
-        :param command: команда бота
+        :param command: команда
+        :param args: возвращать ли команду с аргументами
         :return: строка c информацией о команде
         """
 
         # Если команда является лишь второстепенной, то вывести её вместе с родительской командой
         if command.parent is not None:
-            return f"{self.clean_prefix}{command.parent} {command}"
+            string = f"{self.clean_prefix}{command.parent} {command}"
         else:
-            return f"{self.clean_prefix}{command}"
+            string = f"{self.clean_prefix}{command}"
+
+        if args:
+            string += " " + command.signature
+
+        return string
 
     async def send_bot_help(self, mapping):
         """
@@ -169,11 +175,8 @@ class CustomHelpCommand(HelpCommand):
         self.embed.title = f"Команда \"{command.name}\""
         signature = command.signature
 
-        if signature:
-            self.embed.description = f"{self.get_command_signature(command)} {signature} - " \
-                                     f"{self.shorten_text(command.short_doc)}"
-        else:
-            self.embed.description = f"{self.get_command_signature(command)} - {self.shorten_text(command.short_doc)}"
+        self.embed.description = f"{self.get_command_signature(command, args=True)} - " \
+                                 f"{self.shorten_text(command.short_doc)}"
 
         self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
 

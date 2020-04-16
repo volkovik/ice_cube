@@ -1,11 +1,42 @@
 import discord
 import json
+import mysql.connector
 from utilities import CustomHelpCommand
 from discord.ext import commands
 
 # Загрузка настроек бота
 with open("config.json") as f:
     cfg = json.load(f)
+
+
+def get_prefix(bot, message):
+    """
+    Возвращение префикса из базы данных, стандартного или при упоминание
+
+    :param bot: класс бота
+    :param message: сообщение
+    :return: конечный префикс
+    """
+
+    prefix = "."
+
+    if message.guild:
+        db = mysql.connector.connect(**cfg["database"])
+        cursor = db.cursor()
+
+        data_sql = {"server_id": message.guild.id}
+
+        cursor.execute("SELECT prefix FROM servers WHERE id=%(server_id)s;", data_sql)
+        result = cursor.fetchone()
+
+        if result is not None:
+            prefix = result[0]
+
+        cursor.close()
+        db.close()
+
+    return commands.when_mentioned_or(prefix)(bot, message)
+
 
 client = commands.Bot(command_prefix=".")
 client.help_command = CustomHelpCommand()
