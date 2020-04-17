@@ -34,7 +34,7 @@ class Information(commands.Cog, name="Информация"):
             activity = f"**Пользовательский статус:** {user.activity}\n"
 
             if len(user.activities) > 1:
-                activity += f"**{convert_activity_type(user.activities[1].type)}** {user.activities[1]}\n"
+                activity += f"**{convert_activity_type(user.activities[1].type)}** {user.activities[1].name}\n"
         else:
             activity = f"**{convert_activity_type(user.activity.type)}** " \
                        f"{user.activity.name}\n" if user.activity else ""
