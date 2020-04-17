@@ -4,7 +4,9 @@ from discord import Status
 from discord.ext import commands
 
 from main import CONFIG
-from utilities import ConvertEnums, ErrorMessage, SuccessfulMessage
+from core.commands import BotCommand
+from core.templates import ErrorMessage, SuccessfulMessage
+from core.converts import convert_status, convert_activity_type, convert_voice_region, convert_verification_level
 
 
 class Information(commands.Cog, name="Информация"):
@@ -12,7 +14,10 @@ class Information(commands.Cog, name="Информация"):
         self.client = bot
         self.color = 0xFFCC4D
 
-    @commands.command(name="user", usage="[пользователь]")
+    @commands.command(
+        cls=BotCommand, name="user",
+        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}
+    )
     async def user_information(self, ctx, user: commands.MemberConverter = None):
         """
         Профиль пользователя
@@ -21,7 +26,7 @@ class Information(commands.Cog, name="Информация"):
         if user is None:
             user = ctx.author
 
-        status = ConvertEnums.status(user.status)
+        status = convert_status(user.status)
         created_at = user.created_at.strftime("%d.%m.%Y, %H:%M:%S")
         joined_at = user.joined_at.strftime("%d.%m.%Y, %H:%M:%S")
 
@@ -29,9 +34,9 @@ class Information(commands.Cog, name="Информация"):
             activity = f"**Пользовательский статус:** {user.activity}\n"
 
             if len(user.activities) > 1:
-                activity += f"**{ConvertEnums.activity_type(user.activities[1].type)}** {user.activities[1]}\n"
+                activity += f"**{convert_activity_type(user.activities[1].type)}** {user.activities[1]}\n"
         else:
-            activity = f"**{ConvertEnums.activity_type(user.activity.type)}** " \
+            activity = f"**{convert_activity_type(user.activity.type)}** " \
                        f"{user.activity.name}\n" if user.activity else ""
 
         db = mysql.connector.connect(**CONFIG["database"])
@@ -74,7 +79,11 @@ class Information(commands.Cog, name="Информация"):
         if isinstance(error, commands.BadArgument):
             await ctx.send(embed=ErrorMessage("Я не нашёл указанного участника на сервере"))
 
-    @commands.command(name="bio", usage="<текст>")
+    @commands.command(
+        cls=BotCommand, name="bio",
+        usage={"текст": ("описание, которое будет отображаться в вашем профиле (оставьте пустым, если хотите удалить "
+                         "уже существующий текст)", True)}
+    )
     async def change_bio(self, ctx, *, text=None):
         """
         Редактирование описания в профиле
@@ -125,7 +134,7 @@ class Information(commands.Cog, name="Информация"):
         cursor.close()
         db.close()
 
-    @commands.command(name="server")
+    @commands.command(cls=BotCommand, name="server")
     async def server_information(self, ctx):
         """
         Основная информация о сервере
@@ -133,8 +142,8 @@ class Information(commands.Cog, name="Информация"):
 
         server = ctx.guild
 
-        region = ConvertEnums.voice_region(server.region)
-        verification = ConvertEnums.verification_level(server.verification_level)
+        region = convert_voice_region(server.region)
+        verification = convert_verification_level(server.verification_level)
         security = str(verification) + (" (2FA)" if server.mfa_level is True else "")
         created_at = server.created_at.strftime("%d.%m.%Y, %H:%M:%S")
 

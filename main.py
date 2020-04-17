@@ -1,8 +1,9 @@
 import discord
 import json
 import mysql.connector
-from utilities import CustomHelpCommand
 from discord.ext import commands
+
+from core.templates import Help
 
 # Загрузка настроек бота
 with open("config.json") as f:
@@ -39,7 +40,7 @@ def get_prefix(bot, message):
 
 
 client = commands.Bot(command_prefix=get_prefix)
-client.help_command = CustomHelpCommand()
+client.help_command = Help()
 cogs = {"information", "fun", "settings"}  # Множество модулей
 
 for cog in cogs:

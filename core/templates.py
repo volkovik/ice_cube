@@ -1,6 +1,6 @@
 import discord
 from itertools import groupby
-from discord import ActivityType, Status, VoiceRegion, VerificationLevel, Embed
+from discord import Embed
 from discord.ext.commands import HelpCommand
 
 
@@ -24,68 +24,7 @@ class SuccessfulMessage(Embed):
         super().__init__(title=":white_check_mark: Выполнено", description=message, color=0x77B255)
 
 
-class ConvertEnums:
-    """
-    Конвертация Enums из discord.py на русский язык
-    """
-
-    @staticmethod
-    def activity_type(arg: ActivityType):
-        return {
-            ActivityType.playing: "Играет",
-            ActivityType.listening: "Слушает",
-            ActivityType.watching: "Смотрит",
-            ActivityType.streaming: "Стримит"
-        }.get(arg, arg)
-
-    @staticmethod
-    def status(arg: Status):
-        return {
-            Status.online: "Онлайн",
-            Status.idle: "Неактивный",
-            Status.dnd or Status.do_not_disturb: "Не беспокоить",
-            Status.offline or Status.invisible: "Не в сети"
-        }.get(arg, arg)
-
-    @staticmethod
-    def voice_region(arg: VoiceRegion) -> str:
-        return {
-            VoiceRegion.amsterdam: ":flag_nl: Амстердам",
-            VoiceRegion.brazil: ":flag_br: Бразилия",
-            VoiceRegion.dubai: ":flag_ae: Дубай",
-            VoiceRegion.eu_central: ":flag_eu: Центральная Европа",
-            VoiceRegion.eu_west: ":flag_eu: Западная Европа",
-            VoiceRegion.europe: ":flag_eu: Европа",
-            VoiceRegion.frankfurt: ":flag_de: Франкфурт",
-            VoiceRegion.hongkong: ":flag_hk: Гонконг",
-            VoiceRegion.india: ":flag_in: Индия",
-            VoiceRegion.japan: ":flag_jp: Япония",
-            VoiceRegion.london: ":flag_gb: Лондон",
-            VoiceRegion.russia: ":flag_ru: Россия",
-            VoiceRegion.singapore: ":flag_sg: Сингапур",
-            VoiceRegion.southafrica: ":flag_za: Южная Африка",
-            VoiceRegion.sydney: ":flag_au: Сидней",
-            VoiceRegion.us_central: ":flag_us: Центральная Америка",
-            VoiceRegion.us_east: ":flag_us: Восточная Америка",
-            VoiceRegion.us_south: ":flag_us: Южная Америка",
-            VoiceRegion.us_west: ":flag_us: Восточная Америка",
-            VoiceRegion.vip_amsterdam: ":flag_nl: Амстердам (VIP)",
-            VoiceRegion.vip_us_east: ":flag_us: Восточная Америка (VIP)",
-            VoiceRegion.vip_us_west: ":flag_us: Западная Америка (VIP)"
-        }.get(arg, arg)
-
-    @staticmethod
-    def verification_level(arg: VerificationLevel) -> str:
-        return {
-            VerificationLevel.none: "Нет",
-            VerificationLevel.low: "Низкая",
-            VerificationLevel.medium: "Средняя",
-            VerificationLevel.high or VerificationLevel.table_flip: "Высокая",
-            VerificationLevel.extreme or VerificationLevel.double_table_flip: "Экстримальная"
-        }.get(arg, arg)
-
-
-class CustomHelpCommand(HelpCommand):
+class Help(HelpCommand):
     """
     Производный класс, который формирует вид команды help
     """
@@ -196,10 +135,16 @@ class CustomHelpCommand(HelpCommand):
         """
 
         self.embed.title = f"Команда \"{command.name}\""
-        signature = command.signature
 
         self.embed.description = f"{self.get_command_signature(command, args=True)} - " \
                                  f"{self.shorten_text(command.short_doc)}"
+
+        if command.usage:
+            self.embed.add_field(
+                name="Аргументы",
+                value=" ".join([(f"<{key}>" if params[1] is True else f"[{key}]") + f" - {params[0]}" for key, params in
+                                command.usage.items()])
+            )
 
         self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
 

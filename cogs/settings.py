@@ -3,14 +3,19 @@ import mysql.connector
 from discord.ext import commands
 
 from main import CONFIG
-from utilities import ErrorMessage, SuccessfulMessage
+from core.commands import BotCommand
+from core.templates import ErrorMessage, SuccessfulMessage
 
 
 class Settings(commands.Cog, name="Настройки"):
     def __init__(self, bot):
         self.client = bot
 
-    @commands.command(name="prefix")
+    @commands.command(
+        cls=BotCommand, name="prefix",
+        usage={"prefix": ("префикс бота, который будет работать только на этом сервере (оставьте пустым, если хотите "
+                          "удалить уже существующий префикс)", True)}
+    )
     @commands.has_permissions(administrator=True)
     async def set_prefix_server(self, ctx, prefix=None):
         """

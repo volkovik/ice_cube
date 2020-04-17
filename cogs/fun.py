@@ -2,7 +2,8 @@ import discord
 from random import choice
 from discord.ext import commands
 
-from utilities import ErrorMessage
+from core.commands import BotCommand
+from core.templates import ErrorMessage
 
 
 class Fun(commands.Cog, name="Развлечения"):
@@ -10,7 +11,10 @@ class Fun(commands.Cog, name="Развлечения"):
         self.client = bot
         self.color = 0x32a852
 
-    @commands.command(name="8ball", usage="<вопрос>")
+    @commands.command(
+        cls=BotCommand, name="8ball",
+        usage={"вопрос": ("закрытый вопрос (на который можно ответить да или нет)", True)}
+    )
     async def eight_ball_game(self, ctx, *, question=None):
         """
         Игра "Волшебный шар"
