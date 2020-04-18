@@ -76,6 +76,11 @@ class Settings(commands.Cog, name="Настройки"):
         cursor.close()
         db.close()
 
+    @set_prefix_server.error
+    async def error_set_prefix_server(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.send(embed=ErrorMessage("Вы должны быть администратором, чтобы измененить префикс на сервере"))
+
 
 def setup(bot):
     bot.add_cog(Settings(bot))
