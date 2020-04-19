@@ -41,7 +41,7 @@ def get_prefix(bot, message):
 
 client = commands.Bot(command_prefix=get_prefix)
 client.help_command = Help()
-cogs = {"information", "fun", "settings"}  # Множество модулей
+cogs = {"information", "fun", "settings", "rooms"}  # Множество модулей
 
 for cog in cogs:
     client.load_extension(f"cogs.{cog}")  # Загрузка модуля из множества
