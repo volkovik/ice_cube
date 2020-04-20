@@ -384,6 +384,12 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             raise CustomError("Комната уже имеет такое название")
         else:
             if name is None:
+                if member.voice.channel.name == member.display_name:
+                    cursor.close()
+                    db.close()
+
+                    raise CustomError("Я не могу сбросить название канала, когда канал имеет название по умолчанию")
+
                 message = SuccessfulMessage("Я сбросил название вашей комнаты")
                 name = member.display_name
 
