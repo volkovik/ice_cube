@@ -3,7 +3,7 @@ from random import choice
 from discord.ext import commands
 
 from core.commands import BotCommand
-from core.templates import ErrorMessage
+from core.templates import CustomError
 
 
 class Fun(commands.Cog, name="Развлечения"):
@@ -31,7 +31,7 @@ class Fun(commands.Cog, name="Развлечения"):
                    ":x: По моим данным — «нет»", ":x: Перспективы не очень хорошие", ":x: Весьма сомнительно")
 
         if question is None:
-            message = ErrorMessage("Вы не ввели вопрос")
+            raise CustomError("Вы не ввели вопрос")
         else:
             message = discord.Embed(
                 title=":8ball: 8ball",

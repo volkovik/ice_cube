@@ -4,10 +4,10 @@ from discord.ext import commands
 
 from main import CONFIG
 from core.commands import BotCommand
-from core.templates import ErrorMessage, SuccessfulMessage
+from core.templates import SuccessfulMessage, CustomError
 
 
-class Rooms(commands.Cog):
+class Rooms(commands.Cog, name="Приватные комнаты"):
     def __init__(self, bot):
         self.client = bot
         self.owner_permissions = discord.PermissionOverwrite(manage_channels=True, connect=True, speak=True)
@@ -161,8 +161,6 @@ class Rooms(commands.Cog):
         Настройка вашей приватной комнаты
         """
 
-        pass
-
     @room_settings.command(cls=BotCommand, name="lock")
     async def room_lock(self, ctx):
         """
@@ -189,11 +187,20 @@ class Rooms(commands.Cog):
         creator = int(result[0]) if result is not None else None
 
         if creator is None:
+            cursor.close()
+            db.close()
+
             return
         elif member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
-            message = ErrorMessage("Вы должны быть в вашей приватной комнате, чтобы использовать данную команду")
+            cursor.close()
+            db.close()
+
+            raise CustomError("Вы должны быть в вашей приватной комнате, чтобы использовать данную команду")
         elif member.voice.channel.overwrites_for(everyone) == permissions:
-            message = ErrorMessage("Комната уже закрыта")
+            cursor.close()
+            db.close()
+
+            raise CustomError("Комната уже закрыта")
         else:
             message = SuccessfulMessage("Я закрыл вашу комнату")
 
@@ -201,12 +208,12 @@ class Rooms(commands.Cog):
                            "VALUES(%(server_id)s, %(user_id)s, True)"
                            "ON DUPLICATE KEY UPDATE is_private=True", data_sql)
 
+            cursor.close()
+            db.close()
+
             await member.voice.channel.set_permissions(everyone, overwrite=permissions)
 
         await ctx.send(embed=message)
-
-        cursor.close()
-        db.close()
 
     @room_settings.command(cls=BotCommand, name="unlock")
     async def voice_unlock(self, ctx):
@@ -234,11 +241,20 @@ class Rooms(commands.Cog):
         creator = int(result[0]) if result is not None else None
 
         if creator is None:
+            cursor.close()
+            db.close()
+
             return
         elif member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
-            message = ErrorMessage("Вы должны быть в вашей приватной комнате, чтобы использовать данную команду")
+            cursor.close()
+            db.close()
+
+            raise CustomError("Вы должны быть в вашей приватной комнате, чтобы использовать данную команду")
         elif member.voice.channel.overwrites_for(everyone) == permissions:
-            message = ErrorMessage("Комната уже открыта")
+            cursor.close()
+            db.close()
+
+            raise CustomError("Комната уже открыта")
         else:
             message = SuccessfulMessage("Я открыл вашу комнату")
 
@@ -246,12 +262,12 @@ class Rooms(commands.Cog):
                            "VALUES(%(server_id)s, %(user_id)s, False)\n"
                            "ON DUPLICATE KEY UPDATE is_private=False", data_sql)
 
+            cursor.close()
+            db.close()
+
             await member.voice.channel.set_permissions(everyone, overwrite=permissions)
 
         await ctx.send(embed=message)
-
-        cursor.close()
-        db.close()
 
     @room_settings.command(
         cls=BotCommand, name="limit",
@@ -281,16 +297,28 @@ class Rooms(commands.Cog):
         creator = int(result[0]) if result is not None else None
 
         if creator is None:
+            cursor.close()
+            db.close()
+
             return
         elif member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
-            message = ErrorMessage("Вы должны быть в вашей приватной комнате, чтобы использовать данную команду")
+            cursor.close()
+            db.close()
+
+            raise CustomError("Вы должны быть в вашей приватной комнате, чтобы использовать данную команду")
         elif limit is not None and limit < 0:
-            message = ErrorMessage("Лимит не может быть меньше 0")
+            cursor.close()
+            db.close()
+
+            raise CustomError("Лимит не может быть меньше 0")
         elif member.voice.channel.user_limit == limit or (member.voice.channel.user_limit == 0 and limit is None):
+            cursor.close()
+            db.close()
+
             if member.voice.channel.user_limit == 0:
-                message = ErrorMessage("Я не могу сбросить лимит, когда самого лимита - нет")
+                raise CustomError("Я не могу сбросить лимит, когда самого лимита - нет")
             else:
-                message = ErrorMessage("Комната уже имеет такой лимит")
+                raise CustomError("Комната уже имеет такой лимит")
         else:
             if limit == 0:
                 message = SuccessfulMessage("Я сбросил лимит в вашей комнате")
@@ -301,12 +329,12 @@ class Rooms(commands.Cog):
                            "VALUES(%(server_id)s, %(user_id)s, %(user_limit)s)\n"
                            "ON DUPLICATE KEY UPDATE user_limit=%(user_limit)s", data_sql)
 
+            cursor.close()
+            db.close()
+
             await member.voice.channel.edit(user_limit=limit)
 
         await ctx.send(embed=message)
-
-        cursor.close()
-        db.close()
 
     @room_settings.command(
         cls=BotCommand, name="rename",
@@ -335,17 +363,28 @@ class Rooms(commands.Cog):
         creator = int(result[0]) if result is not None else None
 
         if creator is None:
+            cursor.close()
+            db.close()
+
             return
         elif member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
-            message = ErrorMessage("Вы должны быть в вашей приватной комнате, чтобы использовать данную команду")
+            cursor.close()
+            db.close()
+
+            raise CustomError("Вы должны быть в вашей приватной комнате, чтобы использовать данную команду")
         elif name is not None and len(name) > 32:
-            message = ErrorMessage("Название канала не должно быть больше 32-ух символов")
+            cursor.close()
+            db.close()
+
+            raise CustomError("Название канала не должно быть больше 32-ух символов")
         elif member.voice.channel.name == name:
-            message = ErrorMessage("Комната уже имеет такое название")
+            cursor.close()
+            db.close()
+
+            raise CustomError("Комната уже имеет такое название")
         else:
             if name is None:
                 message = SuccessfulMessage("Я сбросил название вашей комнаты")
-
                 name = member.display_name
 
                 cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, name)\n"
@@ -358,12 +397,12 @@ class Rooms(commands.Cog):
                                "VALUES(%(server_id)s, %(user_id)s, %(name)s)\n"
                                "ON DUPLICATE KEY UPDATE name=%(name)s", data_sql)
 
+            cursor.close()
+            db.close()
+
             await member.voice.channel.edit(name=name)
 
         await ctx.send(embed=message)
-
-        cursor.close()
-        db.close()
 
 
 def setup(bot):

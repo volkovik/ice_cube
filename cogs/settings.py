@@ -1,10 +1,9 @@
-import discord
 import mysql.connector
 from discord.ext import commands
 
 from main import CONFIG
 from core.commands import BotCommand
-from core.templates import ErrorMessage, SuccessfulMessage
+from core.templates import SuccessfulMessage, CustomError
 
 
 class Settings(commands.Cog, name="Настройки"):
@@ -39,18 +38,15 @@ class Settings(commands.Cog, name="Настройки"):
 
         if prefix is not None:
             if len(prefix) > 16:
-                message = ErrorMessage("Я не могу поставить префикс, который больше 16 символов")
-
                 cursor.close()
                 db.close()
 
-                return await ctx.send(embed=message)
-            elif prefix == last_prefix:
-                message = ErrorMessage("Вы уже используете данный префикс")
-
+                raise CustomError("Я не могу поставить префикс, который больше 16 символов")
+            elif prefix == last_prefix or (last_prefix is None and prefix == "."):
                 cursor.close()
                 db.close()
-                return await ctx.send(embed=message)
+
+                raise CustomError("Вы уже используете данный префикс")
 
             if prefix == ".":
                 cursor.execute("DELETE FROM servers WHERE id=%(server_id)s", data_sql)
@@ -61,7 +57,10 @@ class Settings(commands.Cog, name="Настройки"):
             message = SuccessfulMessage("Я успешно изменил префикс")
         else:
             if last_prefix == '.' or last_prefix is None:
-                message = ErrorMessage("Вы не ввели префикс")
+                cursor.close()
+                db.close()
+
+                raise CustomError("Вы не ввели префикс")
             else:
                 cursor.execute("DELETE FROM servers WHERE id=%(server_id)s", data_sql)
 
@@ -72,11 +71,6 @@ class Settings(commands.Cog, name="Настройки"):
         cursor.close()
         db.close()
 
-    @set_prefix_server.error
-    async def error_set_prefix_server(self, ctx, error):
-        if isinstance(error, commands.MissingPermissions):
-            await ctx.send(embed=ErrorMessage("Вы должны быть администратором, чтобы измененить префикс на сервере"))
-
     @commands.group(name="setrooms", invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     async def rooms_settings(self, ctx):
@@ -84,10 +78,9 @@ class Settings(commands.Cog, name="Настройки"):
         Настройка приватных комнат на сервере
         """
 
-        await ctx.send_help(ctx.command)
-
     @rooms_settings.command(cls=BotCommand, name="enable")
-    async def create_room_creator(self, ctx):
+    @commands.has_permissions(administrator=True)
+    async def create_rooms_system(self, ctx):
         """
         Создать приватные комнаты на сервере
         """
@@ -104,7 +97,12 @@ class Settings(commands.Cog, name="Настройки"):
         result = cursor.fetchone()
         last_voice = result[0] if result is not None else None
 
-        if last_voice is None:
+        if last_voice is not None:
+            cursor.close()
+            db.close()
+
+            raise CustomError("У вас уже есть приватные комнаты")
+        else:
             message = SuccessfulMessage("Я успешно включил систему приватных комнат")
 
             category = await server.create_category_channel(name="Приватные комнаты")
@@ -115,15 +113,15 @@ class Settings(commands.Cog, name="Настройки"):
             cursor.execute("INSERT INTO rooms_server_settings(server_id, channel_id)\n"
                            "VALUES(%(server_id)s, %(voice_id)s)\n"
                            "ON DUPLICATE KEY UPDATE channel_id=%(voice_id)s", data_sql)
-        else:
-            message = ErrorMessage("У вас уже есть приватные комнаты")
 
-        cursor.close()
-        db.close()
+            cursor.close()
+            db.close()
+
         await ctx.send(embed=message)
 
     @rooms_settings.command(cls=BotCommand, name="disable")
-    async def remove_room_creator(self, ctx):
+    @commands.has_permissions(administrator=True)
+    async def remove_rooms_system(self, ctx):
         """
         Выключить и удалить приватные комнаты на сервере
         """
@@ -140,7 +138,12 @@ class Settings(commands.Cog, name="Настройки"):
         result = cursor.fetchone()
         last_voice = result[0] if result is not None else None
 
-        if last_voice is not None:
+        if last_voice is None:
+            cursor.close()
+            db.close()
+
+            raise CustomError("На вашем сервере не поставлены приватные комнаты")
+        else:
             message = SuccessfulMessage("Я успешно выключил и удалил систему приватных комнат")
 
             voice = server.get_channel(int(last_voice))
@@ -153,11 +156,10 @@ class Settings(commands.Cog, name="Настройки"):
             await category.delete()
 
             cursor.execute("DELETE FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        else:
-            message = ErrorMessage("На вашем сервере не поставлены приватные комнаты")
 
-        cursor.close()
-        db.close()
+            cursor.close()
+            db.close()
+
         await ctx.send(embed=message)
 
 

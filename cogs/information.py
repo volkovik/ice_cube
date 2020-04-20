@@ -5,7 +5,7 @@ from discord.ext import commands
 
 from main import CONFIG
 from core.commands import BotCommand
-from core.templates import ErrorMessage, SuccessfulMessage
+from core.templates import ErrorMessage, SuccessfulMessage, CustomError
 from core.converts import convert_status, convert_activity_type, convert_voice_region, convert_verification_level
 
 
@@ -104,18 +104,15 @@ class Information(commands.Cog, name="Информация"):
 
         if text is not None:
             if len(text) > 255:
-                message = ErrorMessage("Я не могу поставить текст больше 255 символов")
-
                 cursor.close()
                 db.close()
 
-                return await ctx.send(embed=message)
+                raise CustomError("Я не могу поставить текст больше 255 символов")
             elif text == last_text:
-                message = ErrorMessage("Введёный текст идентичен вашему описанию в профиле")
-
                 cursor.close()
                 db.close()
-                return await ctx.send(embed=message)
+
+                raise CustomError("Введёный текст идентичен вашему описанию в профиле")
 
             cursor.execute("INSERT INTO users(id, bio) VALUES(%(user_id)s, %(bio)s)\n"
                            "ON DUPLICATE KEY UPDATE bio=%(bio)s", data_sql)
@@ -123,7 +120,10 @@ class Information(commands.Cog, name="Информация"):
             message = SuccessfulMessage("Я изменил описание в вашем профиле")
         else:
             if last_text is None:
-                message = ErrorMessage("Вы не ввели текст")
+                cursor.close()
+                db.close()
+
+                raise CustomError("Вы не ввели текст")
             else:
                 cursor.execute("DELETE FROM users WHERE id=%(user_id)s", data_sql)
 
