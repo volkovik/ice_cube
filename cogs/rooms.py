@@ -161,6 +161,21 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         Настройка вашей приватной комнаты
         """
 
+        db = mysql.connector.connect(**CONFIG["database"])
+        cursor = db.cursor()
+
+        data_sql = {"server_id": ctx.guild.id}
+
+        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
+        result = cursor.fetchone()
+        voice_creator = result[0] if result is not None else None
+
+        if voice_creator is None:
+            raise CustomError("У данного сервера нет системы приватных комнат")
+
+        elif ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command.name)
+
     @room_settings.command(cls=BotCommand, name="lock")
     async def room_lock(self, ctx):
         """
@@ -271,7 +286,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
     @room_settings.command(
         cls=BotCommand, name="limit",
-        usage={"лимит участников": ("максимальное количество участников, которое может подключиться в комнату (если "
+        usage={"лимит участников": ("максимальное количество участников, которое может подключиться к комнате (если "
                                     "оставить пустым, лимит сбросится)", True)}
     )
     async def voice_users_limit(self, ctx, limit: int = 0):
@@ -338,7 +353,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
     @room_settings.command(
         cls=BotCommand, name="rename",
-        usage={"название": ("новое название комнаты", True)}
+        usage={"название": ("новое название комнаты (если оставить пустым, то название комнаты станет ваше имя)", True)}
     )
     async def rename(self, ctx, *, name=None):
         """

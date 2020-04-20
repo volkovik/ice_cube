@@ -106,11 +106,7 @@ class Help(HelpCommand):
         :return: строка c информацией о команде
         """
 
-        # Если команда является лишь второстепенной, то вывести её вместе с родительской командой
-        if command.parent is not None:
-            string = f"{self.clean_prefix}{command.parent} {command}"
-        else:
-            string = f"{self.clean_prefix}{command}"
+        string = f"{self.clean_prefix}{command}"
 
         if args:
             string += " " + command.signature
@@ -148,7 +144,7 @@ class Help(HelpCommand):
 
     async def send_command_help(self, command):
         """
-        Отправка информации команды в тектовый канал
+        Отправка информации о команде в тектовый канал
 
         :param command: команда бота
         """
@@ -166,6 +162,34 @@ class Help(HelpCommand):
             )
 
         self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
+
+        await self.context.send(embed=self.embed)
+
+    async def send_group_help(self, group):
+        """
+        Отправка информации о группе команды в тектовый канал
+
+        :param group: группа команд
+        """
+
+        self.embed.title = f"Группа команд \"{group.name}\""
+        self.embed.description = f"{self.get_command_signature(group, args=True)} - " \
+                                 f"{self.shorten_text(group.short_doc)}"
+
+        if group.all_commands:
+            for _, cmd in group.all_commands.items():
+                command_doc = f"{self.get_command_signature(cmd, args=True)} - {self.shorten_text(cmd.short_doc)}"
+
+                if cmd.usage:
+                    command_doc += "\n**Аргументы**\n"
+                    command_doc += " ".join([(f"<{key}>" if params[1] is True else f"[{key}]") + f" - {params[0]}"
+                                             for key, params in cmd.usage.items()])
+
+                self.embed.add_field(
+                    name=f"Команда \"{cmd.name}\"",
+                    value=command_doc,
+                    inline=False
+                )
 
         await self.context.send(embed=self.embed)
 

@@ -78,6 +78,8 @@ class Settings(commands.Cog, name="Настройки"):
         Настройка приватных комнат на сервере
         """
 
+        await ctx.send_help(ctx.command.name)
+
     @rooms_settings.command(cls=BotCommand, name="enable")
     @commands.has_permissions(administrator=True)
     async def create_rooms_system(self, ctx):
