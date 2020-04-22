@@ -377,40 +377,34 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         result = cursor.fetchone()
         creator = int(result[0]) if result is not None else None
 
+        cursor.execute("SELECT name FROM rooms_user_settings WHERE server_id=%(server_id)s AND user_id=%(user_id)s",
+                       data_sql)
+        result = cursor.fetchone()
+        last_name = result[0] if result is not None else None
+
         if creator is None:
             cursor.close()
             db.close()
 
             return
-        elif member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
-            cursor.close()
-            db.close()
 
-            raise CustomError("Вы должны быть в вашей приватной комнате, чтобы использовать данную команду")
-        elif name is not None and len(name) > 32:
+        if name is not None and len(name) > 32:
             cursor.close()
             db.close()
 
             raise CustomError("Название канала не должно быть больше 32-ух символов")
-        elif member.voice.channel.name == name:
-            cursor.close()
-            db.close()
 
-            raise CustomError("Комната уже имеет такое название")
-        else:
-            if name is None:
-                if member.voice.channel.name == member.display_name:
-                    cursor.close()
-                    db.close()
+        if member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
+            if last_name is None and name is None:
+                cursor.close()
+                db.close()
 
-                    raise CustomError("Я не могу сбросить название канала, когда канал имеет название по умолчанию")
+                raise CustomError("Вы ещё не поставили название для комнаты, чтобы сбрасывать его")
+            elif last_name == name:
+                cursor.close()
+                db.close()
 
-                message = SuccessfulMessage("Я сбросил название вашей комнаты")
-                name = member.display_name
-
-                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, name)\n"
-                               "VALUES(%(server_id)s, %(user_id)s, NULL)\n"
-                               "ON DUPLICATE KEY UPDATE name=NULL", data_sql)
+                raise CustomError("Комната уже имеет такое название")
             else:
                 message = SuccessfulMessage("Я изменил название вашей комнаты")
 
@@ -418,10 +412,40 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
                                "VALUES(%(server_id)s, %(user_id)s, %(name)s)\n"
                                "ON DUPLICATE KEY UPDATE name=%(name)s", data_sql)
 
-            cursor.close()
-            db.close()
+                cursor.close()
+                db.close()
+        else:
+            if member.voice.channel.name == member.display_name and name is None:
+                if last_name is not None:
+                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, name)\n"
+                                   "VALUES(%(server_id)s, %(user_id)s, NULL)\n"
+                                   "ON DUPLICATE KEY UPDATE name=NULL", data_sql)
 
-            await member.voice.channel.edit(name=name)
+                cursor.close()
+                db.close()
+
+                raise CustomError("Вы ещё не поставили название для комнаты, чтобы сбрасывать его")
+            elif member.voice.channel.name == name:
+                if not last_name == name:
+                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, name)\n"
+                                   "VALUES(%(server_id)s, %(user_id)s, %(name)s)\n"
+                                   "ON DUPLICATE KEY UPDATE name=%(name)s", data_sql)
+
+                cursor.close()
+                db.close()
+
+                raise CustomError("Комната уже имеет такое название")
+            else:
+                message = SuccessfulMessage("Я изменил название вашей комнаты")
+
+                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, name)\n"
+                               "VALUES(%(server_id)s, %(user_id)s, %(name)s)\n"
+                               "ON DUPLICATE KEY UPDATE name=%(name)s", data_sql)
+
+                cursor.close()
+                db.close()
+
+                await member.voice.channel.edit(name=name)
 
         await ctx.send(embed=message)
 
