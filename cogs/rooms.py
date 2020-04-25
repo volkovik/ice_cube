@@ -309,45 +309,82 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
         result = cursor.fetchone()
-        creator = int(result[0]) if result is not None else None
+        creator = result[0] if result is not None else None
+
+        cursor.execute("SELECT user_limit FROM rooms_user_settings WHERE server_id=%(server_id)s "
+                       "AND user_id=%(user_id)s", data_sql)
+        result = cursor.fetchone()
+        last_limit = int(result[0]) if result is not None else None
 
         if creator is None:
             cursor.close()
             db.close()
 
             return
-        elif member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
+
+        if 0 > limit:
             cursor.close()
             db.close()
 
-            raise CustomError("Вы должны быть в вашей приватной комнате, чтобы использовать данную команду")
-        elif limit is not None and limit < 0:
+            raise CustomError("Лимит не должен быть меньше 0")
+        elif limit > 99:
             cursor.close()
             db.close()
 
-            raise CustomError("Лимит не может быть меньше 0")
-        elif member.voice.channel.user_limit == limit or (member.voice.channel.user_limit == 0 and limit is None):
-            cursor.close()
-            db.close()
+            raise CustomError("Лимит не должен быть больше 99")
 
-            if member.voice.channel.user_limit == 0:
-                raise CustomError("Я не могу сбросить лимит, когда самого лимита - нет")
-            else:
+        if member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
+            if last_limit == 0 and limit == 0:
+                cursor.close()
+                db.close()
+
+                raise CustomError("Вы ещё не поставили лимит пользователей для комнаты, чтобы сбрасывать его")
+            elif last_limit == limit:
+                cursor.close()
+                db.close()
+
                 raise CustomError("Комната уже имеет такой лимит")
-        else:
-            if limit == 0:
-                message = SuccessfulMessage("Я сбросил лимит в вашей комнате")
             else:
-                message = SuccessfulMessage("Я изменил лимит вашей комнаты")
+                message = SuccessfulMessage("Я изменил лимит пользователей для вашей комнаты")
 
-            cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, user_limit)\n"
-                           "VALUES(%(server_id)s, %(user_id)s, %(user_limit)s)\n"
-                           "ON DUPLICATE KEY UPDATE user_limit=%(user_limit)s", data_sql)
+                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, user_limit)\n"
+                               "VALUES(%(server_id)s, %(user_id)s, %(user_limit)s)\n"
+                               "ON DUPLICATE KEY UPDATE user_limit=%(user_limit)s", data_sql)
 
-            cursor.close()
-            db.close()
+                cursor.close()
+                db.close()
+        else:
+            if member.voice.channel.user_limit == limit == 0:
+                if last_limit != 0:
+                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, user_limit)\n"
+                                   "VALUES(%(server_id)s, %(user_id)s, 0)\n"
+                                   "ON DUPLICATE KEY UPDATE user_limit=0", data_sql)
 
-            await member.voice.channel.edit(user_limit=limit)
+                cursor.close()
+                db.close()
+
+                raise CustomError("Вы ещё не поставили лимит для комнаты, чтобы сбрасывать его")
+            elif member.voice.channel.user_limit == limit:
+                if last_limit != limit:
+                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, user_limit)\n"
+                                   "VALUES(%(server_id)s, %(user_id)s, %(user_limit)s)\n"
+                                   "ON DUPLICATE KEY UPDATE user_limit=%(user_limit)s", data_sql)
+
+                cursor.close()
+                db.close()
+
+                raise CustomError("Комната уже имеет такой лимит")
+            else:
+                message = SuccessfulMessage("Я изменил лимит пользователей вашей комнаты")
+
+                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, user_limit)\n"
+                               "VALUES(%(server_id)s, %(user_id)s, %(user_limit)s)\n"
+                               "ON DUPLICATE KEY UPDATE user_limit=%(user_limit)s", data_sql)
+
+                cursor.close()
+                db.close()
+
+                await member.voice.channel.edit(user_limit=limit)
 
         await ctx.send(embed=message)
 
