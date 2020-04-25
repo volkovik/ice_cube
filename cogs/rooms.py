@@ -201,32 +201,54 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         result = cursor.fetchone()
         creator = int(result[0]) if result is not None else None
 
+        cursor.execute("SELECT is_private FROM rooms_user_settings "
+                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s", data_sql)
+        result = cursor.fetchone()
+        last_value = True if result is not None and result[0] == 1 else False
+
         if creator is None:
             cursor.close()
             db.close()
 
             return
-        elif member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
-            cursor.close()
-            db.close()
 
-            raise CustomError("Вы должны быть в вашей приватной комнате, чтобы использовать данную команду")
-        elif member.voice.channel.overwrites_for(everyone) == permissions:
-            cursor.close()
-            db.close()
+        if member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
+            if last_value is True:
+                cursor.close()
+                db.close()
 
-            raise CustomError("Комната уже закрыта")
+                raise CustomError("Комната уже закрыта")
+            else:
+                message = SuccessfulMessage("Я закрыл вашу комнату")
+
+                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
+                               "VALUES(%(server_id)s, %(user_id)s, True)\n"
+                               "ON DUPLICATE KEY UPDATE is_private=True", data_sql)
+
+                cursor.close()
+                db.close()
         else:
-            message = SuccessfulMessage("Я закрыл вашу комнату")
+            if member.voice.channel.overwrites_for(everyone) == permissions:
+                if last_value is not True:
+                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
+                                   "VALUES(%(server_id)s, %(user_id)s, True)\n"
+                                   "ON DUPLICATE KEY UPDATE is_private=True", data_sql)
 
-            cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)"
-                           "VALUES(%(server_id)s, %(user_id)s, True)"
-                           "ON DUPLICATE KEY UPDATE is_private=True", data_sql)
+                cursor.close()
+                db.close()
 
-            cursor.close()
-            db.close()
+                raise CustomError("Комната уже закрыта")
+            else:
+                message = SuccessfulMessage("Я закрыл вашу комнату")
 
-            await member.voice.channel.set_permissions(everyone, overwrite=permissions)
+                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
+                               "VALUES(%(server_id)s, %(user_id)s, True)\n"
+                               "ON DUPLICATE KEY UPDATE is_private=True", data_sql)
+
+                cursor.close()
+                db.close()
+
+                await member.voice.channel.set_permissions(everyone, overwrite=permissions)
 
         await ctx.send(embed=message)
 
@@ -255,32 +277,54 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         result = cursor.fetchone()
         creator = int(result[0]) if result is not None else None
 
+        cursor.execute("SELECT is_private FROM rooms_user_settings "
+                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s", data_sql)
+        result = cursor.fetchone()
+        last_value = True if result is not None and result[0] == 1 else False
+
         if creator is None:
             cursor.close()
             db.close()
 
             return
-        elif member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
-            cursor.close()
-            db.close()
 
-            raise CustomError("Вы должны быть в вашей приватной комнате, чтобы использовать данную команду")
-        elif member.voice.channel.overwrites_for(everyone) == permissions:
-            cursor.close()
-            db.close()
+        if member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
+            if last_value is False:
+                cursor.close()
+                db.close()
 
-            raise CustomError("Комната уже открыта")
+                raise CustomError("Комната уже открыта")
+            else:
+                message = SuccessfulMessage("Я открыл вашу комнату")
+
+                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
+                               "VALUES(%(server_id)s, %(user_id)s, False)\n"
+                               "ON DUPLICATE KEY UPDATE is_private=False", data_sql)
+
+                cursor.close()
+                db.close()
         else:
-            message = SuccessfulMessage("Я открыл вашу комнату")
+            if member.voice.channel.overwrites_for(everyone) == permissions:
+                if last_value is not False:
+                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
+                                   "VALUES(%(server_id)s, %(user_id)s, False)\n"
+                                   "ON DUPLICATE KEY UPDATE is_private=False", data_sql)
 
-            cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
-                           "VALUES(%(server_id)s, %(user_id)s, False)\n"
-                           "ON DUPLICATE KEY UPDATE is_private=False", data_sql)
+                cursor.close()
+                db.close()
 
-            cursor.close()
-            db.close()
+                raise CustomError("Комната уже открыта")
+            else:
+                message = SuccessfulMessage("Я открыл вашу комнату")
 
-            await member.voice.channel.set_permissions(everyone, overwrite=permissions)
+                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
+                               "VALUES(%(server_id)s, %(user_id)s, False)\n"
+                               "ON DUPLICATE KEY UPDATE is_private=False", data_sql)
+
+                cursor.close()
+                db.close()
+
+                await member.voice.channel.set_permissions(everyone, overwrite=permissions)
 
         await ctx.send(embed=message)
 
