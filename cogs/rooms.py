@@ -530,6 +530,87 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         await ctx.send(embed=message)
 
+    @room_settings.command(name="reset")
+    async def reset_room_settings(self, ctx):
+        """
+        Сбросить все настройки комнаты
+        """
+
+        member = ctx.author
+        server = ctx.guild
+        everyone = server.default_role
+
+        db = mysql.connector.connect(**CONFIG["database"])
+        db.autocommit = True
+        cursor = db.cursor()
+
+        data_sql = {
+            "server_id": server.id,
+            "user_id": member.id
+        }
+
+        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
+        result = cursor.fetchone()
+        creator = int(result[0]) if result is not None else None
+
+        cursor.execute("SELECT is_private, user_limit, name FROM rooms_user_settings "
+                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s", data_sql)
+        result = cursor.fetchone()
+        settings_from_db = result if result is not None else None
+
+        default_settings_db = (0, 0, None)
+        permissions = discord.PermissionOverwrite(connect=True)
+
+        if creator is None:
+            cursor.close()
+            db.close()
+
+            return
+
+        if member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
+            if settings_from_db == default_settings_db or settings_from_db is None:
+                cursor.close()
+                db.close()
+
+                raise CustomError("Вы ещё не сделали каких-либо изменений для комнаты, чтобы сбрасывать его настройки")
+            else:
+                message = SuccessfulMessage("Я сбросил настройки вашей комнаты")
+
+                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private, user_limit, name)\n"
+                               "VALUES(%(server_id)s, %(user_id)s, False, 0, NULL)\n"
+                               "ON DUPLICATE KEY UPDATE is_private=False, user_limit=0, name=NULL", data_sql)
+
+                cursor.close()
+                db.close()
+        else:
+            channel = member.voice.channel
+
+            if channel.name == member.display_name and channel.user_limit == 0 \
+                    and channel.overwrites_for(everyone) == permissions:
+                if settings_from_db != default_settings_db:
+                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private, user_limit, name)\n"
+                                   "VALUES(%(server_id)s, %(user_id)s, False, 0, NULL)\n"
+                                   "ON DUPLICATE KEY UPDATE is_private=False, user_limit=0, name=NULL", data_sql)
+
+                cursor.close()
+                db.close()
+
+                raise CustomError("Вы ещё не сделали каких-либо изменений для комнаты, чтобы сбрасывать его настройки")
+            else:
+                message = SuccessfulMessage("Я сбросил настройки вашей комнаты")
+
+                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private, user_limit, name)\n"
+                               "VALUES(%(server_id)s, %(user_id)s, False, 0, NULL)\n"
+                               "ON DUPLICATE KEY UPDATE is_private=False, user_limit=0, name=NULL", data_sql)
+
+                cursor.close()
+                db.close()
+
+                await channel.edit(name=member.display_name, user_limit=0)
+                await channel.set_permissions(everyone, overwrite=permissions)
+
+        await ctx.send(embed=message)
+
 
 def setup(bot):
     bot.add_cog(Rooms(bot))
