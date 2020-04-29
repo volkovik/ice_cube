@@ -43,6 +43,12 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         result = cursor.fetchone()
         config = result if result is not None else None  # настройки пользователя
 
+        cursor.execute("SELECT allowed_member_id FROM permissions_to_join_room "
+                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s",
+                       data_sql)
+        result = cursor.fetchall()
+        allowed_members_to_join = [server.get_member(int(x[0])) for x in result] if result is not None else None
+
         # если канал не найден, то завершить процесс
         if creator is None:
             cursor.close()
@@ -53,7 +59,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             creator = server.get_channel(creator)
 
             # если канала из базы данных нет на сервере или он не имеет категории, то удалить этот канал в базе данных
-            if creator is None or creator.category is None:  #
+            if creator is None or creator.category is None:
                 cursor.execute("DELETE FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
 
                 cursor.close()
@@ -86,6 +92,13 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
                         permissions = discord.PermissionOverwrite(connect=False)
 
                         await private.set_permissions(everyone, overwrite=permissions)
+
+                # дать доступ пользователем, которые были в базе данных
+                if allowed_members_to_join is not None:
+                    for user in allowed_members_to_join:
+                        permissions = discord.PermissionOverwrite(connect=True)
+
+                        await private.set_permissions(user, overwrite=permissions)
 
                 await member.move_to(private)
 
@@ -527,6 +540,154 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
                 db.close()
 
                 await member.voice.channel.edit(name=name)
+
+        await ctx.send(embed=message)
+
+    @room_settings.command(cls=BotCommand, name="addmember",
+                           usage={"пользователь": ("упоминание или ID участника сервера", True)})
+    async def give_permissions_to_member(self, ctx, member: commands.MemberConverter):
+        """
+        Дать доступ к приватному каналу пользователю
+        """
+
+        user = ctx.author
+        server = ctx.guild
+        permissions = discord.PermissionOverwrite(connect=True)
+
+        db = mysql.connector.connect(**CONFIG["database"])
+        db.autocommit = True
+        cursor = db.cursor()
+
+        data_sql = {
+            "server_id": server.id,
+            "user_id": user.id,
+            "allowed_member_id": member.id
+        }
+
+        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
+        result = cursor.fetchone()
+        creator = int(result[0]) if result is not None else None
+
+        if creator is None:
+            cursor.close()
+            db.close()
+
+            raise()
+
+        cursor.execute("SELECT allowed_member_id FROM permissions_to_join_room "
+                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s",
+                       data_sql)
+        result = cursor.fetchall()
+        allowed_members = [int(x[0]) for x in result] if result is not None else None
+
+        if user.voice is None or user.voice.channel.overwrites_for(user) != self.owner_permissions:
+            if member.id in allowed_members:
+                cursor.close()
+                db.close()
+
+                raise CustomError("Этот участник уже имеет доступ к вашей комнате")
+            else:
+                cursor.execute("INSERT IGNORE INTO permissions_to_join_room(server_id, user_id, allowed_member_id) "
+                               "VALUES(%(server_id)s, %(user_id)s, %(allowed_member_id)s)", data_sql)
+
+                cursor.close()
+                db.close()
+
+                message = SuccessfulMessage(f"Я дал доступ `{member.display_name}` к вашей комнате")
+        else:
+            if user.voice.channel.overwrites_for(member) == permissions:
+                if member.id not in allowed_members:
+                    cursor.execute("INSERT IGNORE INTO permissions_to_join_room(server_id, user_id, allowed_member_id) "
+                                   "VALUES(%(server_id)s, %(user_id)s, %(allowed_member_id)s)", data_sql)
+
+                cursor.close()
+                db.close()
+
+                raise CustomError("Этот участник уже имеет доступ к вашей комнате")
+            else:
+                cursor.execute("INSERT IGNORE INTO permissions_to_join_room(server_id, user_id, allowed_member_id) "
+                               "VALUES(%(server_id)s, %(user_id)s, %(allowed_member_id)s)", data_sql)
+
+                cursor.close()
+                db.close()
+
+                message = SuccessfulMessage(f"Я дал доступ `{member.display_name}` к вашей комнате")
+
+                await user.voice.channel.set_permissions(member, overwrite=permissions)
+
+        await ctx.send(embed=message)
+
+    @room_settings.command(cls=BotCommand, name="removemember",
+                           usage={"пользователь": ("упоминание или ID участника сервера", True)})
+    async def remove_permissions_to_member(self, ctx, member: commands.MemberConverter):
+        """
+        Забрать доступ к приватному каналу у пользователя
+        """
+
+        user = ctx.author
+        server = ctx.guild
+        permissions = discord.PermissionOverwrite(connect=None)
+
+        db = mysql.connector.connect(**CONFIG["database"])
+        db.autocommit = True
+        cursor = db.cursor()
+
+        data_sql = {
+            "server_id": server.id,
+            "user_id": user.id,
+            "allowed_member_id": member.id
+        }
+
+        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
+        result = cursor.fetchone()
+        creator = int(result[0]) if result is not None else None
+
+        if creator is None:
+            cursor.close()
+            db.close()
+
+            raise ()
+
+        cursor.execute("SELECT allowed_member_id FROM permissions_to_join_room "
+                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s",
+                       data_sql)
+        result = cursor.fetchall()
+        allowed_members = [int(x[0]) for x in result] if result is not None else None
+
+        if user.voice is None or user.voice.channel.overwrites_for(user) != self.owner_permissions:
+            if member.id not in allowed_members:
+                cursor.close()
+                db.close()
+
+                raise CustomError("Этот участник не имеет доступ к каналу")
+            else:
+                cursor.execute("DELETE FROM permissions_to_join_room WHERE server_id=%(server_id)s AND "
+                               "user_id=%(user_id)s AND allowed_member_id=%(allowed_member_id)s", data_sql)
+
+                cursor.close()
+                db.close()
+
+                message = SuccessfulMessage(f"Я забрал доступ у `{member.display_name}` к вашей комнате")
+        else:
+            if user.voice.channel.overwrites_for(member) == permissions:
+                if member.id not in allowed_members:
+                    cursor.execute("DELETE FROM permissions_to_join_room WHERE server_id=%(server_id)s AND "
+                                   "user_id=%(user_id)s AND allowed_member_id=%(allowed_member_id)s", data_sql)
+
+                cursor.close()
+                db.close()
+
+                raise CustomError("Этот участник не имеет доступ к каналу")
+            else:
+                cursor.execute("DELETE FROM permissions_to_join_room WHERE server_id=%(server_id)s AND "
+                               "user_id=%(user_id)s AND allowed_member_id=%(allowed_member_id)s", data_sql)
+
+                cursor.close()
+                db.close()
+
+                message = SuccessfulMessage(f"Я забрал доступ у `{member.display_name}` к вашей комнате")
+
+                await user.voice.channel.set_permissions(member, overwrite=permissions)
 
         await ctx.send(embed=message)
 
