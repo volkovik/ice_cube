@@ -524,7 +524,10 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
                 raise CustomError("Комната уже имеет такой лимит")
             else:
-                message = SuccessfulMessage("Я изменил лимит пользователей вашей комнаты")
+                if limit == 0:
+                    message = SuccessfulMessage("Я сбросил лимит пользователей в вашей комнате")
+                else:
+                    message = SuccessfulMessage("Я изменил лимит пользователей в вашей комнате")
 
                 cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, user_limit)\n"
                                "VALUES(%(server_id)s, %(user_id)s, %(user_limit)s)\n"
@@ -622,7 +625,11 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
                 raise CustomError("Комната уже имеет такое название")
             else:
-                message = SuccessfulMessage("Я изменил название вашей комнаты")
+                if name is None:
+                    name = member.display_name
+                    message = SuccessfulMessage("Я сбросил название вашего канала")
+                else:
+                    message = SuccessfulMessage("Я изменил название вашего канала")
 
                 cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, name)\n"
                                "VALUES(%(server_id)s, %(user_id)s, %(name)s)\n"
