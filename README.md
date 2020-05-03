@@ -1,5 +1,6 @@
 # Ice Cube бот
 
+![License](https://img.shields.io/github/license/volkovik/ice_cube)
 ![Python version](https://img.shields.io/badge/Python-v3.7-yellow)
 ![Discord.py version](https://img.shields.io/pypi/v/discord.py?label=discord.py)
 ![Last update](https://img.shields.io/github/last-commit/volkovik/ice_cube/master?label=Last%20update)
