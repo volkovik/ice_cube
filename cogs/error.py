@@ -1,3 +1,4 @@
+import re
 from discord.ext import commands
 from traceback import print_exception
 
@@ -27,6 +28,8 @@ class ErrorHandler(commands.Cog):
             return
         elif isinstance(error, commands.MissingPermissions):
             message = ErrorMessage("У вас недостаточно прав для использования данной команды")
+        elif isinstance(error, commands.BadArgument) and re.search(r"Member \"\w+\" not found", error.args[0]):
+            message = ErrorMessage("Я не нашёл указанного участника на сервере")
         elif isinstance(error, CustomError):
             message = ErrorMessage(error.get_message())
         else:

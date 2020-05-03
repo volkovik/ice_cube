@@ -74,11 +74,6 @@ class Information(commands.Cog, name="Информация"):
 
         await ctx.send(embed=message)
 
-    @user_information.error
-    async def error_user_information(self, ctx, error):
-        if isinstance(error, commands.BadArgument):
-            await ctx.send(embed=ErrorMessage("Я не нашёл указанного участника на сервере"))
-
     @commands.command(
         cls=BotCommand, name="bio",
         usage={"текст": ("описание, которое будет отображаться в вашем профиле (оставьте пустым, если хотите удалить "
