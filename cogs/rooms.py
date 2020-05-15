@@ -1,119 +1,432 @@
 import discord
 import mysql.connector
+from discord import PermissionOverwrite as Permissions
 from discord.ext import commands
 
 from main import CONFIG
 from core.commands import BotCommand
-from core.templates import SuccessfulMessage, CustomError
+from core.templates import SuccessfulMessage, ErrorMessage, CustomError
+
+# Настройки войса для пользователя, которым им владеет
+OWNER_PERMISSIONS = Permissions(manage_channels=True, connect=True, speak=True)
+
+
+def get_user_settings(server, user):
+    """
+    Выдаёт настройки из базы данных комнаты пользователя на определённом сервере
+
+    :param server: класс discord.Guild
+    :param user: класс discord.User или discord.Member
+    :return: настроки комнаты в виде словаря или None, если не было найдено голосового канала или данных из базы данных
+    """
+
+    db = mysql.connector.connect(**CONFIG["database"])
+    db.autocommit = True
+    cursor = db.cursor()
+
+    sql_format = {
+        "server": server.id,
+        "user": user.id
+    }
+
+    cursor.execute("SELECT * FROM rooms_user_settings WHERE server_id=%(server)s AND user_id=%(user)s", sql_format)
+    result = cursor.fetchone()
+
+    if result is not None:
+        result = result[2:]
+
+        settings = {
+            "name": result[0] if result[0] is not None else user.display_name,
+            "user_limit": result[1],
+            "is_locked": True if result[2] else False
+        }
+    else:
+        settings = None
+
+    db.close()
+    cursor.close()
+
+    return settings
+
+
+def update_user_settings(server, user, **settings):
+    """
+    Обновление пользовательских настроек комнат в базе данных
+
+    :param server: класс discord.Guild
+    :param user: класс discord.User или discord.Member
+    :param settings: параметры, которые должны быть изменены
+    """
+
+    db = mysql.connector.connect(**CONFIG["database"])
+    db.autocommit = True
+    cursor = db.cursor()
+
+    sql_format = {
+        "server": server.id,
+        "user": user.id
+    }
+
+    if user.voice is not None and user.voice.channel.overwrites_for(user) == OWNER_PERMISSIONS:
+        # Настройки из войса пользователя
+
+        room = user.voice.channel
+        perms_connection = Permissions(connect=False)
+
+        settings.setdefault("is_locked", room.overwrites_for(server.default_role) == perms_connection)
+        settings.setdefault("user_limit", room.user_limit)
+        settings.setdefault("name", room.name if room.name != user.display_name else None)
+    else:
+        settings_db = get_user_settings(server, user)
+
+        if settings_db is not None:
+            # Настройки из базы данных
+
+            settings.setdefault("is_locked", settings_db["is_locked"])
+            settings.setdefault("user_limit", settings_db["user_limit"])
+            settings.setdefault("name", settings_db["name"])
+        else:
+            # Настройки, которые стоят по умолчанию, когда пользователь создаёт комнату впервые
+
+            settings.setdefault("is_locked", False)
+            settings.setdefault("user_limit", 0)
+            settings.setdefault("name", None)
+
+    sql_format.update(settings)
+
+    cursor.execute(
+        "INSERT INTO rooms_user_settings(server_id, user_id, name, user_limit, is_locked) "
+        "VALUES(%(server)s, %(user)s, %(name)s, %(user_limit)s, %(is_locked)s) "
+        "ON DUPLICATE KEY UPDATE name=%(name)s, user_limit=%(user_limit)s, is_locked=%(is_locked)s",
+        sql_format
+    )
+
+    db.close()
+    cursor.close()
+
+
+def get_permissions_for_all_users(server, user):
+    """
+    Выдаёт список пользователей, которые у который есть право подключаться к комнате user
+
+    :param server: класс discord.Guild
+    :param user: класс discord.User или discord.Member
+    :return: список пользователей
+    """
+
+    db = mysql.connector.connect(**CONFIG["database"])
+    db.autocommit = True
+    cursor = db.cursor()
+
+    sql_format = {
+        "server": server.id,
+        "user": user.id
+    }
+
+    cursor.execute(
+        "SELECT allowed_user_id FROM rooms_user_permissions "
+        "WHERE server_id=%(server)s AND user_id=%(user)s",
+        sql_format
+    )
+    result = cursor.fetchall()
+
+    allowed_users = []
+
+    for line in result:
+        id = line[0]
+        member = server.get_member(int(id))
+
+        if member is not None:
+            allowed_users.append(member)
+        else:
+            sql_format["allowed_user"] = id
+
+            cursor.execute(
+                "DELETE FROM rooms_user_permissions WHERE allowed_user_id=%(allowed_user)s",
+                sql_format
+            )
+
+    cursor.close()
+    db.cursor()
+
+    return allowed_users if len(allowed_users) != 0 else None
+
+
+def update_permissions_for_all_users(server, user, *allowed_users):
+    """
+    Обновляет список пользователей, сопостовляя его со списком из базы данных
+
+    :param server: класс discord.Guild
+    :param user: класс discord.User или discord.Member
+    :param allowed_users: класс discord.User или discord.Member
+    """
+
+    db = mysql.connector.connect(**CONFIG["database"])
+    db.autocommit = True
+    cursor = db.cursor()
+
+    allowed_users_db = get_permissions_for_all_users(server, user)
+
+    sql_format = {
+        "server": server.id,
+        "user": user.id
+    }
+
+    # Ищет пользователей, которые имеют доступ к комнате
+    for member in allowed_users:
+        if (allowed_users_db is not None and member not in allowed_users_db) or allowed_users_db is None:
+            sql_format["allowed_user"] = member.id
+
+            cursor.execute(
+                "INSERT INTO rooms_user_permissions(server_id, user_id, allowed_user_id) "
+                "VALUES (%(server)s, %(user)s, %(allowed_user)s)",
+                sql_format
+            )
+
+    # Удаляет пользователей из базы данных, которые не были в войсе
+    if allowed_users_db is not None:
+        for m in set(allowed_users_db) - set(allowed_users):
+            sql_format["allowed_user"] = m.id
+
+            cursor.execute(
+                "DELETE FROM rooms_user_permissions WHERE server_id=%(server)s "
+                "AND user_id=%(user)s AND allowed_user_id=%(allowed_user)s",
+                sql_format
+            )
+
+    cursor.close()
+    db.close()
+
+
+def add_permissions_for_user(server, user, allowed_user):
+    """
+    Даёт права доступа пользователю в базе данных
+
+    :param server: класс discord.Guild
+    :param user: класс discord.User или discord.Member
+    :param allowed_user: класс discord.User или discord.Member
+    """
+
+    db = mysql.connector.connect(**CONFIG["database"])
+    db.autocommit = True
+    cursor = db.cursor()
+
+    sql_format = {
+        "server": server.id,
+        "user": user.id,
+        "allowed_user": allowed_user.id
+    }
+
+    cursor.execute(
+        "INSERT IGNORE INTO rooms_user_permissions(server_id, user_id, allowed_user_id) "
+        "VALUES (%(server)s, %(user)s, %(allowed_user)s)",
+        sql_format
+    )
+
+    cursor.close()
+    db.close()
+
+
+def remove_permissions_for_user(server, user, allowed_user):
+    """
+    Забирает права доступа у пользователя в базе данных
+
+    :param server: класс discord.Guild
+    :param user: класс discord.User или discord.Member
+    :param allowed_user: класс discord.User или discord.Member
+    """
+
+    db = mysql.connector.connect(**CONFIG["database"])
+    db.autocommit = True
+    cursor = db.cursor()
+
+    sql_format = {
+        "server": server.id,
+        "user": user.id,
+        "allowed_user": allowed_user.id
+    }
+
+    cursor.execute(
+        "DELETE FROM rooms_user_permissions "
+        "WHERE server_id=%(server)s AND user_id=%(user)s AND allowed_user_id=%(allowed_user)s",
+        sql_format
+    )
+
+    cursor.close()
+    db.close()
+
+
+def get_room_creator(server):
+    """
+    Выдача канала, который создаёт комнаты для пользователя
+
+    :param server: класс discord.Guild
+    :return: класс discord.VoiceChannel или None, если такого канала на сервере не имеется
+    """
+
+    db = mysql.connector.connect(**CONFIG["database"])
+    cursor = db.cursor()
+
+    sql_format = {
+        "server": server.id
+    }
+
+    cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server)s", sql_format)
+    result = cursor.fetchone()
+
+    cursor.close()
+    db.close()
+
+    return server.get_channel(int(result[0])) if result is not None else None
+
+
+async def delete_room_creator(channel):
+    """
+    Удаляет канал, который должен создавать комнаты из базы данных и в дискорде
+
+    :param channel: класс discord.VoiceChannel
+    :return:
+    """
+
+    db = mysql.connector.connect(**CONFIG["database"])
+    db.autocommit = True
+    cursor = db.cursor()
+
+    sql_format = {
+        "server": channel.guild.id
+    }
+
+    cursor.execute("DELETE FROM rooms_server_settings WHERE server_id=%(server)s", sql_format)
+
+    cursor.close()
+    db.close()
+
+    await channel.delete()
 
 
 class Rooms(commands.Cog, name="Приватные комнаты"):
     def __init__(self, bot):
         self.client = bot
-        self.owner_permissions = discord.PermissionOverwrite(manage_channels=True, connect=True, speak=True)
+
+    async def cog_check(self, ctx):
+        author = ctx.author
+        server = ctx.guild
+
+        creator = get_room_creator(server)
+
+        # Если на сервере нет системы комнат, то выдать ошибку
+        if creator is None:
+            await ctx.send(embed=ErrorMessage("У данного сервера нет системы приватных комнат"))
+
+            return False
+
+        settings = get_user_settings(server, author)
+
+        # Если участник, на данный момент, в своей комнате
+        if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+            channel = author.voice.channel
+
+            settings_from_voice = {
+                "name": None if channel.name == author.display_name else channel.name,
+                "user_limit": channel.user_limit,
+                "is_locked": True
+            }
+
+            # Если настройки из базы данных несостыкуются с настройками текущего войса или же настройки не
+            # зафиксированны в базе данных, то записать изменения в базу данных
+            if settings != settings_from_voice:
+                update_user_settings(server, author, **settings)
+
+            def check(p):
+                return type(p[0]) is discord.Member and p[1] == Permissions(connect=True) and p[0].id != author.id
+
+            allowed_users_from_voice = list(map(lambda u: u[0], filter(check, channel.overwrites.items())))
+            allowed_users_from_db = get_permissions_for_all_users(server, author)
+
+            if allowed_users_from_voice != allowed_users_from_db:
+                update_permissions_for_all_users(server, author, *allowed_users_from_voice)
+        # Иначе, если у участника нет настроек в базе данных, то выдать ошибку, что он не пользовался комнатами ранее
+        elif settings is None:
+            await ctx.send(embed=ErrorMessage(
+                f"Ранее, вы не использовали комнаты на этом сервере. Чтобы использовать эту команду, создайте комнату "
+                f"с помощью голосового канала `{creator.name}`"
+            ))
+
+            return False
+
+        return True
 
     @commands.Cog.listener("on_voice_state_update")
-    async def voice_master(self, member, before, after):
+    async def voice_master(self, user, before, after):
         """
         Создание и удаление команты, когда пользователей заходит, выходит или перемещается по голосовым каналам
 
-        :param member: пользователь, у которого был обновлён VoiceState
+        :param user: пользователь, у которого был обновлён VoiceState
         :param before: VoiceState до обновления
         :param after: VoiceState после обновления
         """
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
-
         server = after.channel.guild if before.channel is None else before.channel.guild
-        everyone = server.default_role
-
-        data_sql = {
-            "server_id": server.id,
-            "user_id": member.id
-        }
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        creator = int(result[0]) if result is not None else None  # канал для создания комнат
-
-        cursor.execute("SELECT name, is_private, user_limit FROM rooms_user_settings\n"
-                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s", data_sql)
-        result = cursor.fetchone()
-        config = result if result is not None else None  # настройки пользователя
-
-        cursor.execute("SELECT allowed_member_id FROM permissions_to_join_room "
-                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s",
-                       data_sql)
-        result = cursor.fetchall()
-        allowed_members_to_join = [server.get_member(int(x[0])) for x in result] if result is not None else None
+        creator = get_room_creator(server)
 
         # если канал не найден, то завершить процесс
         if creator is None:
-            cursor.close()
-            db.close()
+            return
+
+        # если канала нет на сервере или он не имеет категории, то удалить этот канал в базе данных и завершить процесс
+        if creator is None or creator.category is None:
+            await delete_room_creator(creator)
 
             return
         else:
-            creator = server.get_channel(creator)
+            creator_category = creator.category
 
-            # если канала из базы данных нет на сервере или он не имеет категории, то удалить этот канал в базе данных
-            if creator is None or creator.category is None:
-                cursor.execute("DELETE FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-
-                cursor.close()
-                db.close()
-
-                return
-            else:
-                category = creator.category
-
+        # Когда пользователь перемещается по войсам или только что присоеденился к войсу
         if after.channel:
-            # когда пользователь присоединяется или перемещается к голосовому каналу
             channel = after.channel
 
-            if config is not None and config[0] is not None:
-                channel_name = config[0]
-            else:
-                channel_name = member.display_name
-
+            # Если канал, в котом сейчас находится пользователь является тем каналом, который создаёт комнаты, то
+            # начинается конфигурация комнаты
             if creator == channel:
-                # создать голосовой канал
+                settings = get_user_settings(server, user)
+                allowed_users = get_permissions_for_all_users(server, user)
+                everyone = server.default_role
 
-                private = await server.create_voice_channel(channel_name, category=category)
-                await private.set_permissions(member, overwrite=self.owner_permissions)
+                if settings is None:
+                    settings = {
+                        "name": user.display_name,
+                        "user_limit": 0,
+                        "is_locked": False
+                    }
 
-                if config is not None:
-                    await private.edit(user_limit=config[2])
+                permissions_for_room = {
+                    user: OWNER_PERMISSIONS,
+                    everyone: Permissions(connect=not settings["is_locked"])
+                }
 
-                    # если у пользователя стоит приватная комната
-                    if config[1] == 1:
-                        permissions = discord.PermissionOverwrite(connect=False)
+                # Если в базе данных имеются данные о правах пользователя, то добавить их в список
+                if allowed_users is not None:
+                    permissions = [Permissions(connect=True)] * len(allowed_users)
+                    permissions_for_room.update(dict(zip(allowed_users, permissions)))
 
-                        await private.set_permissions(everyone, overwrite=permissions)
+                room = await server.create_voice_channel(
+                    name=settings["name"],
+                    category=creator_category,
+                    overwrites=permissions_for_room,
+                    user_limit=settings["user_limit"]
+                )
 
-                # дать доступ пользователем, которые были в базе данных
-                if allowed_members_to_join is not None:
-                    for user in allowed_members_to_join:
-                        permissions = discord.PermissionOverwrite(connect=True)
-
-                        await private.set_permissions(user, overwrite=permissions)
-
-                await member.move_to(private)
+                await user.move_to(room)
 
         if before.channel:
             # когда пользователь выходит из голосового канала
 
             channel = before.channel
 
-            if channel in category.voice_channels and channel != creator and len(channel.members) == 0:
-                # удалить голосовой канал, если он является комнатой
+            if channel in creator_category.voice_channels and channel != creator and len(channel.members) == 0:
+                # удалить голосовой канал, если он является комнатой и в ней нет пользователей
 
                 await channel.delete()
-
-        cursor.close()
-        db.close()
 
     @commands.Cog.listener("on_guild_channel_delete")
     async def voice_master_checker_deleted_channels(self, channel):
@@ -123,23 +436,11 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         :param channel: удалённый канал
         """
 
-        server = channel.guild
+        creator = get_room_creator(channel.guild)
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
-
-        data_sql = {"server_id": server.id}
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        creator = int(result[0]) if result is not None else None
-
+        # Если удалённый был каналом, который создаёт комнаты, то удалить его в базе данных
         if channel.id == creator:
-            cursor.execute("DELETE FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-
-        cursor.close()
-        db.close()
+            await delete_room_creator(channel)
 
     @commands.Cog.listener("on_guild_channel_update")
     async def voice_master_checker_updated_channels(self, before, after):
@@ -150,23 +451,11 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         :param after: канал после обновления
         """
 
-        server = before.guild
+        creator = get_room_creator(before.guild)
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
-
-        data_sql = {"server_id": server.id}
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        creator = int(result[0]) if result is not None else None
-
+        # Если у канала удалили категорию или его переместили в другую, то удалить канал в базе данных и на сервере
         if before.id == creator and after.category is None:
-            cursor.execute("DELETE FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-
-        cursor.close()
-        db.close()
+            delete_room_creator(before)
 
     @commands.group(name="room")
     async def room_settings(self, ctx):
@@ -174,103 +463,24 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         Настройка вашей приватной комнаты
         """
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        cursor = db.cursor()
-
-        user = ctx.author
-        server = ctx.guild
-        everyone = server.default_role
-
-        data_sql = {
-            "server_id": server.id,
-            "user_id": user.id
-        }
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        voice_creator = result[0] if result is not None else None
-
-        if voice_creator is None:
-            cursor.close()
-            db.close()
-
-            raise CustomError("У данного сервера нет системы приватных комнат")
-
+        # Если команда была использована без сабкоманды, то отправить информацию об комнате
         if ctx.invoked_subcommand is None:
-            db.autocommit = True
+            author = ctx.author
+            server = ctx.guild
+            name, user_limit, is_locked = get_user_settings(server, author).values()
 
-            # Конфигурация голосового канала из базы данных
-            cursor.execute("SELECT is_private, user_limit, name FROM rooms_user_settings "
-                           "WHERE server_id=%(server_id)s AND user_id=%(user_id)s", data_sql)
-            result = cursor.fetchone()
-            settings_db = result if result is not None else None
-            name_db = settings_db[2] if settings_db[2] is not None else user.display_name
-            user_limit_db = settings_db[1]
-            is_locked_db = settings_db[0]
-
-            # Список пользователей из базы данных, у которых есть доступ к комнате
-            cursor.execute("SELECT allowed_member_id FROM permissions_to_join_room "
-                           "WHERE server_id=%(server_id)s AND user_id=%(user_id)s", data_sql)
-            result = cursor.fetchall()
-            allowed_members_db = [server.get_member(int(x[0])) for x in result] if len(result) != 0 else None
-
-            # Создание формы сообщения
-            message = discord.Embed(title=f"Информация о комнате пользователя \"{user.display_name}\"")
+            message = discord.Embed(title=f"Информация о комнате пользователя \"{author.display_name}\"")
             message.set_footer(text=f"Посмотреть все доступные команды для управления комнатой можно "
                                     f"через {ctx.prefix}help user")
 
-            if user.voice is None or user.voice.channel.overwrites_for(user) != self.owner_permissions:
-                # Выставить настройки из базы данных, если пользователь не находится в своём голосовом канале
-                name, user_limit, is_locked = name_db, user_limit_db, is_locked_db
-
-                allowed_members = allowed_members_db
-            else:
-                channel = user.voice.channel
-
-                # Выставить настройки из текущего голосового канала, если он является комнатой пользователя
-                name = channel.name
-                user_limit = channel.user_limit
-                is_locked = channel.overwrites_for(everyone) == discord.PermissionOverwrite(connect=False)
-
-                # Записать изменения голосового канала в базу данных, если данные из базы данных не соотвествуют данным
-                # из канала
-                if name != name_db or user_limit != user_limit_db or is_locked != is_locked_db:
-                    data_sql["is_private"] = is_locked
-                    data_sql["user_limit"] = user_limit
-                    data_sql["name"] = name if name != user.display_name else None
-
-                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private, user_limit, name) "
-                                   "VALUES(%(server_id)s, %(user_id)s, %(is_private)s, %(user_limit)s, %(name)s) "
-                                   "ON DUPLICATE KEY UPDATE is_private=%(is_private)s, user_limit=%(user_limit)s, "
-                                   "name=%(name)s", data_sql)
-
-                allowed_members = []
-
-                for m, p in channel.overwrites.items():
-                    if type(m) is discord.Member and p == discord.PermissionOverwrite(connect=True) and m.id != user.id:
-                        allowed_members.append(m)
-
-                        if m not in allowed_members_db:
-                            data_sql["allowed_member_id"] = m.id
-
-                            cursor.execute("INSERT INTO permissions_to_join_room(server_id, user_id, "
-                                           "allowed_member_id) "
-                                           "VALUES (%(server_id)s, %(user_id)s, %(allowed_member_id)s)", data_sql)
-
-                # Удалить пользователей из базы данных, которые не были в голосовом канале
-                if allowed_members_db is not None:
-                    for m in set(allowed_members_db) - set(allowed_members):
-                        data_sql["allowed_member_id"] = m.id
-
-                        cursor.execute("DELETE FROM permissions_to_join_room WHERE server_id=%(server_id)s "
-                                       "AND user_id=%(user_id)s AND allowed_member_id=%(allowed_member_id)s", data_sql)
+            allowed_members = get_permissions_for_all_users(server, author)
 
             # Информация о комнате
             message.description = f"**Название: ** {name}\n" \
                                   f"**Доступ:** {'закрытый' if is_locked else 'открытый'}\n" \
                                   f"**Лимит пользователей: ** {user_limit if user_limit != 0 else 'нет'}"
 
-            # Информация о пользователях с правами доступа
+            # Перечесление пользователей с правами доступа
             if allowed_members is not None:
                 allowed_members.sort(key=lambda m: m.name)
 
@@ -282,513 +492,157 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             await ctx.send(embed=message)
 
     @room_settings.command(cls=BotCommand, name="lock")
-    async def room_lock(self, ctx):
+    async def lock_room(self, ctx):
         """
         Закрыть комнату от постороних участников
         """
 
-        member = ctx.author
+        author = ctx.author
         server = ctx.guild
         everyone = server.default_role
+        is_locked = get_user_settings(server, author)["is_locked"]
 
-        permissions = discord.PermissionOverwrite(connect=False)
-
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
-
-        data_sql = {
-            "server_id": server.id,
-            "user_id": member.id
-        }
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        creator = int(result[0]) if result is not None else None
-
-        cursor.execute("SELECT is_private FROM rooms_user_settings "
-                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s", data_sql)
-        result = cursor.fetchone()
-        last_value = True if result is not None and result[0] == 1 else False
-
-        if creator is None:
-            cursor.close()
-            db.close()
-
-            return
-
-        if member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
-            if last_value is True:
-                cursor.close()
-                db.close()
-
-                raise CustomError("Комната уже закрыта")
-            else:
-                message = SuccessfulMessage("Я закрыл вашу комнату")
-
-                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
-                               "VALUES(%(server_id)s, %(user_id)s, True)\n"
-                               "ON DUPLICATE KEY UPDATE is_private=True", data_sql)
-
-                cursor.close()
-                db.close()
+        if is_locked:
+            raise CustomError("Комната уже закрыта")
         else:
-            if member.voice.channel.overwrites_for(everyone) == permissions:
-                if last_value is not True:
-                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
-                                   "VALUES(%(server_id)s, %(user_id)s, True)\n"
-                                   "ON DUPLICATE KEY UPDATE is_private=True", data_sql)
+            update_user_settings(server, author, is_locked=True)
 
-                cursor.close()
-                db.close()
+            if author.voice is None or author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+                await author.voice.channel.set_permissions(everyone, overwrite=Permissions(connect=False))
 
-                raise CustomError("Комната уже закрыта")
-            else:
-                message = SuccessfulMessage("Я закрыл вашу комнату")
-
-                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
-                               "VALUES(%(server_id)s, %(user_id)s, True)\n"
-                               "ON DUPLICATE KEY UPDATE is_private=True", data_sql)
-
-                cursor.close()
-                db.close()
-
-                await member.voice.channel.set_permissions(everyone, overwrite=permissions)
-
-        await ctx.send(embed=message)
+            await ctx.send(embed=SuccessfulMessage("Я закрыл вашу комнату"))
 
     @room_settings.command(cls=BotCommand, name="unlock")
-    async def voice_unlock(self, ctx):
+    async def unlock_room(self, ctx):
         """
-        Открыть комнату для остальных участников
+        Открыть комнату для постороних участников
         """
 
-        member = ctx.author
+        author = ctx.author
         server = ctx.guild
         everyone = server.default_role
+        is_locked = get_user_settings(server, author)["is_locked"]
 
-        permissions = discord.PermissionOverwrite(connect=True)
-
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
-
-        data_sql = {
-            "server_id": server.id,
-            "user_id": member.id
-        }
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        creator = int(result[0]) if result is not None else None
-
-        cursor.execute("SELECT is_private FROM rooms_user_settings "
-                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s", data_sql)
-        result = cursor.fetchone()
-        last_value = True if result is not None and result[0] == 1 else False
-
-        if creator is None:
-            cursor.close()
-            db.close()
-
-            return
-
-        if member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
-            if last_value is False:
-                cursor.close()
-                db.close()
-
-                raise CustomError("Комната уже открыта")
-            else:
-                message = SuccessfulMessage("Я открыл вашу комнату")
-
-                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
-                               "VALUES(%(server_id)s, %(user_id)s, False)\n"
-                               "ON DUPLICATE KEY UPDATE is_private=False", data_sql)
-
-                cursor.close()
-                db.close()
+        if not is_locked:
+            raise CustomError("Комната уже открыта")
         else:
-            if member.voice.channel.overwrites_for(everyone) == permissions:
-                if last_value is not False:
-                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
-                                   "VALUES(%(server_id)s, %(user_id)s, False)\n"
-                                   "ON DUPLICATE KEY UPDATE is_private=False", data_sql)
+            update_user_settings(server, author, is_locked=False)
 
-                cursor.close()
-                db.close()
+            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+                await author.voice.channel.set_permissions(everyone, overwrite=Permissions(connect=True))
 
-                raise CustomError("Комната уже открыта")
-            else:
-                message = SuccessfulMessage("Я открыл вашу комнату")
-
-                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private)\n"
-                               "VALUES(%(server_id)s, %(user_id)s, False)\n"
-                               "ON DUPLICATE KEY UPDATE is_private=False", data_sql)
-
-                cursor.close()
-                db.close()
-
-                await member.voice.channel.set_permissions(everyone, overwrite=permissions)
-
-        await ctx.send(embed=message)
+            await ctx.send(embed=SuccessfulMessage("Я открыл вашу комнату"))
 
     @room_settings.command(
         cls=BotCommand, name="limit",
         usage={"лимит участников": ("максимальное количество участников, которое может подключиться к комнате (если "
                                     "оставить пустым, лимит сбросится)", True)}
     )
-    async def voice_users_limit(self, ctx, limit: int = 0):
+    async def room_users_limit(self, ctx, limit: int = 0):
         """
         Поставить лимит на количество пользователей в вашей приватной комнате
         """
 
-        member = ctx.author
+        author = ctx.author
         server = ctx.guild
+        current_limit = get_user_settings(server, author)["user_limit"]
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
-
-        data_sql = {
-            "server_id": server.id,
-            "user_id": member.id,
-            "user_limit": limit
-        }
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        creator = result[0] if result is not None else None
-
-        cursor.execute("SELECT user_limit FROM rooms_user_settings WHERE server_id=%(server_id)s "
-                       "AND user_id=%(user_id)s", data_sql)
-        result = cursor.fetchone()
-        last_limit = int(result[0]) if result is not None else None
-
-        if creator is None:
-            cursor.close()
-            db.close()
-
-            return
-
-        if 0 > limit:
-            cursor.close()
-            db.close()
-
-            raise CustomError("Лимит не должен быть меньше 0")
-        elif limit > 99:
-            cursor.close()
-            db.close()
-
-            raise CustomError("Лимит не должен быть больше 99")
-
-        if member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
-            if last_limit == 0 and limit == 0:
-                cursor.close()
-                db.close()
-
-                raise CustomError("Вы ещё не поставили лимит пользователей для комнаты, чтобы сбрасывать его")
-            elif last_limit == limit:
-                cursor.close()
-                db.close()
-
-                raise CustomError("Комната уже имеет такой лимит")
-            else:
-                message = SuccessfulMessage("Я изменил лимит пользователей для вашей комнаты")
-
-                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, user_limit)\n"
-                               "VALUES(%(server_id)s, %(user_id)s, %(user_limit)s)\n"
-                               "ON DUPLICATE KEY UPDATE user_limit=%(user_limit)s", data_sql)
-
-                cursor.close()
-                db.close()
+        if current_limit == limit == 0:
+            raise CustomError("Вы ещё не поставили лимит пользователей для комнаты, чтобы сбрасывать его")
+        elif current_limit == limit:
+            raise CustomError("Комната уже имеет такой лимит")
         else:
-            if member.voice.channel.user_limit == limit == 0:
-                if last_limit != 0:
-                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, user_limit)\n"
-                                   "VALUES(%(server_id)s, %(user_id)s, 0)\n"
-                                   "ON DUPLICATE KEY UPDATE user_limit=0", data_sql)
-
-                cursor.close()
-                db.close()
-
-                raise CustomError("Вы ещё не поставили лимит для комнаты, чтобы сбрасывать его")
-            elif member.voice.channel.user_limit == limit:
-                if last_limit != limit:
-                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, user_limit)\n"
-                                   "VALUES(%(server_id)s, %(user_id)s, %(user_limit)s)\n"
-                                   "ON DUPLICATE KEY UPDATE user_limit=%(user_limit)s", data_sql)
-
-                cursor.close()
-                db.close()
-
-                raise CustomError("Комната уже имеет такой лимит")
+            if limit == 0:
+                message = SuccessfulMessage("Я сбросил лимит пользователей в вашей комнате")
+                update_user_settings(server, author, user_limit=limit)
             else:
-                if limit == 0:
-                    message = SuccessfulMessage("Я сбросил лимит пользователей в вашей комнате")
-                else:
-                    message = SuccessfulMessage("Я изменил лимит пользователей в вашей комнате")
+                message = SuccessfulMessage("Я изменил название вашей комнаты")
+                update_user_settings(server, author, user_limit=limit)
 
-                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, user_limit)\n"
-                               "VALUES(%(server_id)s, %(user_id)s, %(user_limit)s)\n"
-                               "ON DUPLICATE KEY UPDATE user_limit=%(user_limit)s", data_sql)
+            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+                await author.voice.channel.edit(user_limit=limit)
 
-                cursor.close()
-                db.close()
-
-                await member.voice.channel.edit(user_limit=limit)
-
-        await ctx.send(embed=message)
+            await ctx.send(embed=message)
 
     @room_settings.command(
-        cls=BotCommand, name="rename",
+        cls=BotCommand, name="name",
         usage={"название": ("новое название комнаты (если оставить пустым, то название комнаты станет ваше имя)", True)}
     )
-    async def rename(self, ctx, *, name=None):
+    async def rename_room(self, ctx, *, name=None):
         """
         Изменение названия команты
         """
 
-        member = ctx.author
+        author = ctx.author
         server = ctx.guild
-
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
-
-        data_sql = {
-            "server_id": server.id,
-            "user_id": member.id,
-            "name": name
-        }
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        creator = int(result[0]) if result is not None else None
-
-        cursor.execute("SELECT name FROM rooms_user_settings WHERE server_id=%(server_id)s AND user_id=%(user_id)s",
-                       data_sql)
-        result = cursor.fetchone()
-        last_name = result[0] if result is not None else None
-
-        if creator is None:
-            cursor.close()
-            db.close()
-
-            return
+        current_name = get_user_settings(server, author)["name"]
 
         if name is not None and len(name) > 32:
-            cursor.close()
-            db.close()
-
             raise CustomError("Название канала не должно быть больше 32-ух символов")
 
-        if member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
-            if last_name is None and name is None:
-                cursor.close()
-                db.close()
-
-                raise CustomError("Вы ещё не поставили название для комнаты, чтобы сбрасывать его")
-            elif last_name == name:
-                cursor.close()
-                db.close()
-
-                raise CustomError("Комната уже имеет такое название")
+        if current_name == author.display_name and name is None:
+            raise CustomError("Вы ещё не поставили название для комнаты, чтобы сбрасывать его")
+        elif name == current_name:
+            raise CustomError("Комната уже имеет такое название")
+        else:
+            if name is None:
+                message = SuccessfulMessage("Я сбросил название вашего канала")
+                name = author.display_name
+                update_user_settings(server, author, name=None)
             else:
                 message = SuccessfulMessage("Я изменил название вашей комнаты")
+                update_user_settings(server, author, name=name)
 
-                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, name)\n"
-                               "VALUES(%(server_id)s, %(user_id)s, %(name)s)\n"
-                               "ON DUPLICATE KEY UPDATE name=%(name)s", data_sql)
+            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+                await author.voice.channel.edit(name=name)
 
-                cursor.close()
-                db.close()
-        else:
-            if member.voice.channel.name == member.display_name and name is None:
-                if last_name is not None:
-                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, name)\n"
-                                   "VALUES(%(server_id)s, %(user_id)s, NULL)\n"
-                                   "ON DUPLICATE KEY UPDATE name=NULL", data_sql)
+            await ctx.send(embed=message)
 
-                cursor.close()
-                db.close()
-
-                raise CustomError("Вы ещё не поставили название для комнаты, чтобы сбрасывать его")
-            elif member.voice.channel.name == name:
-                if not last_name == name:
-                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, name)\n"
-                                   "VALUES(%(server_id)s, %(user_id)s, %(name)s)\n"
-                                   "ON DUPLICATE KEY UPDATE name=%(name)s", data_sql)
-
-                cursor.close()
-                db.close()
-
-                raise CustomError("Комната уже имеет такое название")
-            else:
-                if name is None:
-                    name = member.display_name
-                    message = SuccessfulMessage("Я сбросил название вашего канала")
-                else:
-                    message = SuccessfulMessage("Я изменил название вашего канала")
-
-                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, name)\n"
-                               "VALUES(%(server_id)s, %(user_id)s, %(name)s)\n"
-                               "ON DUPLICATE KEY UPDATE name=%(name)s", data_sql)
-
-                cursor.close()
-                db.close()
-
-                await member.voice.channel.edit(name=name)
-
-        await ctx.send(embed=message)
-
-    @room_settings.command(cls=BotCommand, name="addmember",
-                           usage={"пользователь": ("упоминание или ID участника сервера", True)})
-    async def give_permissions_to_member(self, ctx, member: commands.MemberConverter):
+    @room_settings.command(
+        cls=BotCommand, name="add",
+        usage={"пользователь": ("упоминание или ID участника сервера", True)}
+    )
+    async def give_permissions_to_member(self, ctx, user: commands.MemberConverter):
         """
-        Дать доступ к приватному каналу пользователю
+        Дать доступ пользователю заходить в комнату
         """
 
-        user = ctx.author
+        author = ctx.author
         server = ctx.guild
-        permissions = discord.PermissionOverwrite(connect=True)
+        allowed_users = get_permissions_for_all_users(server, author)
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
-
-        data_sql = {
-            "server_id": server.id,
-            "user_id": user.id,
-            "allowed_member_id": member.id
-        }
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        creator = int(result[0]) if result is not None else None
-
-        if creator is None:
-            cursor.close()
-            db.close()
-
-            raise()
-
-        cursor.execute("SELECT allowed_member_id FROM permissions_to_join_room "
-                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s",
-                       data_sql)
-        result = cursor.fetchall()
-        allowed_members = [int(x[0]) for x in result] if result is not None else None
-
-        if user.voice is None or user.voice.channel.overwrites_for(user) != self.owner_permissions:
-            if member.id in allowed_members:
-                cursor.close()
-                db.close()
-
-                raise CustomError("Этот участник уже имеет доступ к вашей комнате")
-            else:
-                cursor.execute("INSERT IGNORE INTO permissions_to_join_room(server_id, user_id, allowed_member_id) "
-                               "VALUES(%(server_id)s, %(user_id)s, %(allowed_member_id)s)", data_sql)
-
-                cursor.close()
-                db.close()
-
-                message = SuccessfulMessage(f"Я дал доступ `{member.display_name}` к вашей комнате")
+        if user in allowed_users:
+            raise CustomError("Этот участник уже имеет доступ к вашей комнате")
         else:
-            if user.voice.channel.overwrites_for(member) == permissions:
-                if member.id not in allowed_members:
-                    cursor.execute("INSERT IGNORE INTO permissions_to_join_room(server_id, user_id, allowed_member_id) "
-                                   "VALUES(%(server_id)s, %(user_id)s, %(allowed_member_id)s)", data_sql)
+            add_permissions_for_user(server, author, user)
 
-                cursor.close()
-                db.close()
+            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+                await author.voice.channel.set_permissions(user, overwrite=Permissions(connect=True))
 
-                raise CustomError("Этот участник уже имеет доступ к вашей комнате")
-            else:
-                cursor.execute("INSERT IGNORE INTO permissions_to_join_room(server_id, user_id, allowed_member_id) "
-                               "VALUES(%(server_id)s, %(user_id)s, %(allowed_member_id)s)", data_sql)
+            await ctx.send(embed=SuccessfulMessage(f"Я дал доступ `{user.display_name}` к вашей комнате"))
 
-                cursor.close()
-                db.close()
-
-                message = SuccessfulMessage(f"Я дал доступ `{member.display_name}` к вашей комнате")
-
-                await user.voice.channel.set_permissions(member, overwrite=permissions)
-
-        await ctx.send(embed=message)
-
-    @room_settings.command(cls=BotCommand, name="removemember",
-                           usage={"пользователь": ("упоминание или ID участника сервера", True)})
-    async def remove_permissions_to_member(self, ctx, member: commands.MemberConverter):
+    @room_settings.command(
+        cls=BotCommand, name="remove",
+        usage={"пользователь": ("упоминание или ID участника сервера", True)}
+    )
+    async def remove_permissions_to_member(self, ctx, user: commands.MemberConverter):
         """
         Забрать доступ к приватному каналу у пользователя
         """
 
-        user = ctx.author
+        author = ctx.author
         server = ctx.guild
-        permissions = discord.PermissionOverwrite(connect=None)
+        allowed_users = get_permissions_for_all_users(server, author)
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
-
-        data_sql = {
-            "server_id": server.id,
-            "user_id": user.id,
-            "allowed_member_id": member.id
-        }
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        creator = int(result[0]) if result is not None else None
-
-        if creator is None:
-            cursor.close()
-            db.close()
-
-            raise ()
-
-        cursor.execute("SELECT allowed_member_id FROM permissions_to_join_room "
-                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s",
-                       data_sql)
-        result = cursor.fetchall()
-        allowed_members = [int(x[0]) for x in result] if result is not None else None
-
-        if user.voice is None or user.voice.channel.overwrites_for(user) != self.owner_permissions:
-            if member.id not in allowed_members:
-                cursor.close()
-                db.close()
-
-                raise CustomError("Этот участник не имеет доступ к каналу")
-            else:
-                cursor.execute("DELETE FROM permissions_to_join_room WHERE server_id=%(server_id)s AND "
-                               "user_id=%(user_id)s AND allowed_member_id=%(allowed_member_id)s", data_sql)
-
-                cursor.close()
-                db.close()
-
-                message = SuccessfulMessage(f"Я забрал доступ у `{member.display_name}` к вашей комнате")
+        if user not in allowed_users:
+            raise CustomError("Этот участник не имеет доступ к каналу")
         else:
-            if user.voice.channel.overwrites_for(member) == permissions:
-                if member.id not in allowed_members:
-                    cursor.execute("DELETE FROM permissions_to_join_room WHERE server_id=%(server_id)s AND "
-                                   "user_id=%(user_id)s AND allowed_member_id=%(allowed_member_id)s", data_sql)
+            remove_permissions_for_user(server, author, user)
 
-                cursor.close()
-                db.close()
+            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+                await author.voice.channel.set_permissions(user, overwrite=Permissions(connect=None))
 
-                raise CustomError("Этот участник не имеет доступ к каналу")
-            else:
-                cursor.execute("DELETE FROM permissions_to_join_room WHERE server_id=%(server_id)s AND "
-                               "user_id=%(user_id)s AND allowed_member_id=%(allowed_member_id)s", data_sql)
-
-                cursor.close()
-                db.close()
-
-                message = SuccessfulMessage(f"Я забрал доступ у `{member.display_name}` к вашей комнате")
-
-                await user.voice.channel.set_permissions(member, overwrite=permissions)
-
-        await ctx.send(embed=message)
+            await ctx.send(embed=SuccessfulMessage(f"Я забрал доступ у `{user.display_name}` к вашей комнате"))
 
     @room_settings.command(name="reset")
     async def reset_room_settings(self, ctx):
@@ -796,80 +650,28 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         Сбросить все настройки комнаты
         """
 
-        member = ctx.author
+        author = ctx.author
         server = ctx.guild
         everyone = server.default_role
-
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
-
-        data_sql = {
-            "server_id": server.id,
-            "user_id": member.id
+        settings = get_user_settings(server, author)
+        default_settings = {
+            "name": author.display_name,
+            "user_limit": 0,
+            "is_locked": False
         }
 
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        creator = int(result[0]) if result is not None else None
-
-        cursor.execute("SELECT is_private, user_limit, name FROM rooms_user_settings "
-                       "WHERE server_id=%(server_id)s AND user_id=%(user_id)s", data_sql)
-        result = cursor.fetchone()
-        settings_from_db = result if result is not None else None
-
-        default_settings_db = (0, 0, None)
-        permissions = discord.PermissionOverwrite(connect=True)
-
-        if creator is None:
-            cursor.close()
-            db.close()
-
-            return
-
-        if member.voice is None or member.voice.channel.overwrites_for(member) != self.owner_permissions:
-            if settings_from_db == default_settings_db or settings_from_db is None:
-                cursor.close()
-                db.close()
-
-                raise CustomError("Вы ещё не сделали каких-либо изменений для комнаты, чтобы сбрасывать его настройки")
-            else:
-                message = SuccessfulMessage("Я сбросил настройки вашей комнаты")
-
-                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private, user_limit, name)\n"
-                               "VALUES(%(server_id)s, %(user_id)s, False, 0, NULL)\n"
-                               "ON DUPLICATE KEY UPDATE is_private=False, user_limit=0, name=NULL", data_sql)
-
-                cursor.close()
-                db.close()
+        if settings == default_settings:
+            raise CustomError("Вы ещё не сделали каких-либо изменений для комнаты, чтобы сбрасывать его настройки")
         else:
-            channel = member.voice.channel
+            update_user_settings(server, author, **default_settings)
 
-            if channel.name == member.display_name and channel.user_limit == 0 \
-                    and channel.overwrites_for(everyone) == permissions:
-                if settings_from_db != default_settings_db:
-                    cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private, user_limit, name)\n"
-                                   "VALUES(%(server_id)s, %(user_id)s, False, 0, NULL)\n"
-                                   "ON DUPLICATE KEY UPDATE is_private=False, user_limit=0, name=NULL", data_sql)
+            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+                channel = author.voice.channel
 
-                cursor.close()
-                db.close()
+                await channel.edit(name=default_settings["name"], user_limit=default_settings["user_limit"])
+                await channel.set_permissions(everyone, overwrite=Permissions(connect=True))
 
-                raise CustomError("Вы ещё не сделали каких-либо изменений для комнаты, чтобы сбрасывать его настройки")
-            else:
-                message = SuccessfulMessage("Я сбросил настройки вашей комнаты")
-
-                cursor.execute("INSERT INTO rooms_user_settings(server_id, user_id, is_private, user_limit, name)\n"
-                               "VALUES(%(server_id)s, %(user_id)s, False, 0, NULL)\n"
-                               "ON DUPLICATE KEY UPDATE is_private=False, user_limit=0, name=NULL", data_sql)
-
-                cursor.close()
-                db.close()
-
-                await channel.edit(name=member.display_name, user_limit=0)
-                await channel.set_permissions(everyone, overwrite=permissions)
-
-        await ctx.send(embed=message)
+            await ctx.send(embed=SuccessfulMessage("Я сбросил настройки вашей комнаты"))
 
 
 def setup(bot):

@@ -5,7 +5,7 @@ from discord.ext import commands
 
 from main import CONFIG
 from core.commands import BotCommand
-from core.templates import ErrorMessage, SuccessfulMessage, CustomError
+from core.templates import SuccessfulMessage, CustomError
 from core.converts import convert_status, convert_activity_type, convert_voice_region, convert_verification_level
 
 
