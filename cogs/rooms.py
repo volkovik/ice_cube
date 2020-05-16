@@ -327,7 +327,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             channel = author.voice.channel
 
             settings_from_voice = {
-                "name": None if channel.name == author.display_name else channel.name,
+                "name": channel.name,
                 "user_limit": channel.user_limit,
                 "is_locked": True
             }
@@ -494,7 +494,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
     @room_settings.command(cls=BotCommand, name="lock")
     async def lock_room(self, ctx):
         """
-        Закрыть комнату от постороних участников
+        Закрыть комнату от посторонних участников
         """
 
         author = ctx.author
@@ -515,7 +515,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
     @room_settings.command(cls=BotCommand, name="unlock")
     async def unlock_room(self, ctx):
         """
-        Открыть комнату для постороних участников
+        Открыть комнату для посторонних участников
         """
 
         author = ctx.author
@@ -535,17 +535,22 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
     @room_settings.command(
         cls=BotCommand, name="limit",
-        usage={"лимит участников": ("максимальное количество участников, которое может подключиться к комнате (если "
-                                    "оставить пустым, лимит сбросится)", True)}
+        usage={"лимит": ("максимальное количество участников, которое может подключиться к комнате (если оставить "
+                         "пустым, лимит сбросится)", True)}
     )
     async def room_users_limit(self, ctx, limit: int = 0):
         """
-        Поставить лимит на количество пользователей в вашей приватной комнате
+        Поставить лимит пользователей в вашей комнате
         """
 
         author = ctx.author
         server = ctx.guild
         current_limit = get_user_settings(server, author)["user_limit"]
+
+        if 0 > limit:
+            raise CustomError("Лимит не должен быть меньше 0")
+        elif limit > 99:
+            raise CustomError("Лимит не должен быть больше 99")
 
         if current_limit == limit == 0:
             raise CustomError("Вы ещё не поставили лимит пользователей для комнаты, чтобы сбрасывать его")
@@ -556,7 +561,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
                 message = SuccessfulMessage("Я сбросил лимит пользователей в вашей комнате")
                 update_user_settings(server, author, user_limit=limit)
             else:
-                message = SuccessfulMessage("Я изменил название вашей комнаты")
+                message = SuccessfulMessage("Я изменил лимит пользователей для вашей комнаты")
                 update_user_settings(server, author, user_limit=limit)
 
             if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
@@ -566,11 +571,12 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
     @room_settings.command(
         cls=BotCommand, name="name",
-        usage={"название": ("новое название комнаты (если оставить пустым, то название комнаты станет ваше имя)", True)}
+        usage={"название": ("новое название комнаты (если оставить пустым, то название комнаты изменится на ваш ник)",
+                            True)}
     )
     async def rename_room(self, ctx, *, name=None):
         """
-        Изменение названия команты
+        Измененить название команты
         """
 
         author = ctx.author
@@ -627,7 +633,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
     )
     async def remove_permissions_to_member(self, ctx, user: commands.MemberConverter):
         """
-        Забрать доступ к приватному каналу у пользователя
+        Забрать доступ у пользователя заходить в комнату
         """
 
         author = ctx.author
