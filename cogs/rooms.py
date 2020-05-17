@@ -39,7 +39,8 @@ def get_user_settings(server, user):
         settings = {
             "name": result[0] if result[0] is not None else user.display_name,
             "user_limit": result[1],
-            "is_locked": True if result[2] else False
+            "bitrate": result[2],
+            "is_locked": True if result[3] else False
         }
     else:
         settings = None
@@ -76,6 +77,7 @@ def update_user_settings(server, user, **settings):
 
         settings.setdefault("is_locked", room.overwrites_for(server.default_role) == perms_connection)
         settings.setdefault("user_limit", room.user_limit)
+        settings.setdefault("bitrate", room.bitrate)
         settings.setdefault("name", room.name if room.name != user.display_name else None)
     else:
         settings_db = get_user_settings(server, user)
@@ -85,20 +87,23 @@ def update_user_settings(server, user, **settings):
 
             settings.setdefault("is_locked", settings_db["is_locked"])
             settings.setdefault("user_limit", settings_db["user_limit"])
+            settings.setdefault("bitrate", settings_db["bitrate"])
             settings.setdefault("name", settings_db["name"])
         else:
             # Настройки, которые стоят по умолчанию, когда пользователь создаёт комнату впервые
 
             settings.setdefault("is_locked", False)
             settings.setdefault("user_limit", 0)
+            settings.setdefault("bitrate", 64)
             settings.setdefault("name", None)
 
     sql_format.update(settings)
 
     cursor.execute(
-        "INSERT INTO rooms_user_settings(server_id, user_id, name, user_limit, is_locked) "
-        "VALUES(%(server)s, %(user)s, %(name)s, %(user_limit)s, %(is_locked)s) "
-        "ON DUPLICATE KEY UPDATE name=%(name)s, user_limit=%(user_limit)s, is_locked=%(is_locked)s",
+        "INSERT INTO rooms_user_settings(server_id, user_id, name, user_limit, bitrate, is_locked) "
+        "VALUES(%(server)s, %(user)s, %(name)s, %(user_limit)s, %(bitrate)s, %(is_locked)s) "
+        "ON DUPLICATE KEY UPDATE name=%(name)s, user_limit=%(user_limit)s, bitrate=%(bitrate)s, "
+        "is_locked=%(is_locked)s",
         sql_format
     )
 
@@ -312,6 +317,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
     async def cog_check(self, ctx):
         author = ctx.author
         server = ctx.guild
+        everyone = server.default_role
 
         creator = get_room_creator(server)
 
@@ -326,15 +332,16 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             channel = author.voice.channel
 
             settings_from_voice = {
-                "name": channel.name,
+                "name": channel.name if channel.name != author.display_name else None,
                 "user_limit": channel.user_limit,
-                "is_locked": True
+                "bitrate": channel.bitrate // 1000,
+                "is_locked": channel.overwrites_for(everyone) == Permissions(connect=False)
             }
 
             # Если настройки из базы данных несостыкуются с настройками текущего войса или же настройки не
             # зафиксированны в базе данных, то записать изменения в базу данных
             if settings != settings_from_voice:
-                update_user_settings(server, author, **settings)
+                update_user_settings(server, author, **settings_from_voice)
 
             def check(p):
                 return type(p[0]) is discord.Member and p[1] == Permissions(connect=True) and p[0].id != author.id
@@ -391,7 +398,8 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
                     settings = {
                         "name": user.display_name,
                         "user_limit": 0,
-                        "is_locked": False
+                        "is_locked": False,
+                        "bitrate": 64
                     }
 
                 permissions_for_room = {
@@ -408,7 +416,8 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
                     name=settings["name"],
                     category=creator_category,
                     overwrites=permissions_for_room,
-                    user_limit=settings["user_limit"]
+                    user_limit=settings["user_limit"],
+                    bitrate=settings["bitrate"] * 1000
                 )
 
                 await user.move_to(room)
@@ -462,7 +471,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         if ctx.invoked_subcommand is None:
             author = ctx.author
             server = ctx.guild
-            name, user_limit, is_locked = get_user_settings(server, author).values()
+            name, user_limit, bitrate, is_locked = get_user_settings(server, author).values()
 
             message = discord.Embed(title=f"Информация о комнате пользователя \"{author.display_name}\"")
             message.set_footer(text=f"Посмотреть все доступные команды для управления комнатой можно "
@@ -473,7 +482,8 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             # Информация о комнате
             message.description = f"**Название: ** {name}\n" \
                                   f"**Доступ:** {'закрытый' if is_locked else 'открытый'}\n" \
-                                  f"**Лимит пользователей: ** {user_limit if user_limit != 0 else 'нет'}"
+                                  f"**Лимит пользователей:** {user_limit if user_limit != 0 else 'нет'}\n" \
+                                  f"**Битрейт:** {bitrate} кбит/с"
 
             # Перечесление пользователей с правами доступа
             if allowed_members is not None:
@@ -600,6 +610,43 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             await ctx.send(embed=message)
 
     @room_settings.command(
+        cls=BotCommand, name="bitrate",
+        usage={"битрейт": ("кбит/с, чем больше, тем лучше качество звука (если оставить пустым, битрейт будет 64)",
+                           True)}
+    )
+    async def change_room_bitrate(self, ctx, bitrate: int = 64):
+        """
+        Изменить битрейт (качество звука) комнаты
+        """
+
+        author = ctx.author
+        server = ctx.guild
+        current_bitrate = get_user_settings(server, author)["bitrate"]
+        max_bitrate = int(server.bitrate_limit // 1000)
+
+        if 8 > bitrate:
+            raise CommandError("Битрейт не должен быть меньше 8")
+        elif bitrate > max_bitrate:
+            raise CommandError(f"Битрейт не должен быть больше {max_bitrate}")
+
+        if current_bitrate == bitrate == 64:
+            raise CommandError("Вы ещё не изменяли битрейт, чтобы сбрасывать его по умолчанию")
+        elif current_bitrate == bitrate:
+            raise CommandError("Комната уже имеет такой битрейт")
+        else:
+            if bitrate == 0:
+                message = SuccessfulMessage("Я сбросил битрейт в вашей комнате")
+                update_user_settings(server, author, bitrate=bitrate)
+            else:
+                message = SuccessfulMessage("Я изменил битрейт в вашей комнате")
+                update_user_settings(server, author, bitrate=bitrate)
+
+            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+                await author.voice.channel.edit(bitrate=bitrate * 1000)
+
+            await ctx.send(embed=message)
+
+    @room_settings.command(
         cls=BotCommand, name="add",
         usage={"пользователь": ("упоминание или ID участника сервера", True)}
     )
@@ -658,6 +705,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         default_settings = {
             "name": author.display_name,
             "user_limit": 0,
+            "bitrate": 64,
             "is_locked": False
         }
 
@@ -669,7 +717,8 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
                 channel = author.voice.channel
 
-                await channel.edit(name=default_settings["name"], user_limit=default_settings["user_limit"])
+                await channel.edit(name=default_settings["name"], user_limit=default_settings["user_limit"],
+                                   bitrate=default_settings["bitrate"] * 1000)
                 await channel.set_permissions(everyone, overwrite=Permissions(connect=True))
 
             await ctx.send(embed=SuccessfulMessage("Я сбросил настройки вашей комнаты"))
