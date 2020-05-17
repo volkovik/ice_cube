@@ -1,11 +1,12 @@
 import discord
 import mysql.connector
-from discord import PermissionOverwrite as Permissions
 from discord.ext import commands
+from discord import PermissionOverwrite as Permissions
+from discord.ext.commands import CommandError
 
 from main import CONFIG
 from core.commands import BotCommand
-from core.templates import SuccessfulMessage, ErrorMessage, CustomError
+from core.templates import SuccessfulMessage
 
 # Настройки войса для пользователя, которым им владеет
 OWNER_PERMISSIONS = Permissions(manage_channels=True, connect=True, speak=True)
@@ -316,9 +317,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         # Если на сервере нет системы комнат, то выдать ошибку
         if creator is None:
-            await ctx.send(embed=ErrorMessage("У данного сервера нет системы приватных комнат"))
-
-            return False
+            raise CommandError("У данного сервера нет системы приватных комнат")
 
         settings = get_user_settings(server, author)
 
@@ -347,12 +346,8 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
                 update_permissions_for_all_users(server, author, *allowed_users_from_voice)
         # Иначе, если у участника нет настроек в базе данных, то выдать ошибку, что он не пользовался комнатами ранее
         elif settings is None:
-            await ctx.send(embed=ErrorMessage(
-                f"Ранее, вы не использовали комнаты на этом сервере. Чтобы использовать эту команду, создайте комнату "
-                f"с помощью голосового канала `{creator.name}`"
-            ))
-
-            return False
+            raise CommandError(f"Ранее, вы не использовали комнаты на этом сервере. Чтобы использовать эту команду, "
+                               f"создайте комнату с помощью голосового канала `{creator.name}`")
 
         return True
 
@@ -503,7 +498,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         is_locked = get_user_settings(server, author)["is_locked"]
 
         if is_locked:
-            raise CustomError("Комната уже закрыта")
+            raise CommandError("Комната уже закрыта")
         else:
             update_user_settings(server, author, is_locked=True)
 
@@ -524,7 +519,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         is_locked = get_user_settings(server, author)["is_locked"]
 
         if not is_locked:
-            raise CustomError("Комната уже открыта")
+            raise CommandError("Комната уже открыта")
         else:
             update_user_settings(server, author, is_locked=False)
 
@@ -548,14 +543,14 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         current_limit = get_user_settings(server, author)["user_limit"]
 
         if 0 > limit:
-            raise CustomError("Лимит не должен быть меньше 0")
+            raise CommandError("Лимит не должен быть меньше 0")
         elif limit > 99:
-            raise CustomError("Лимит не должен быть больше 99")
+            raise CommandError("Лимит не должен быть больше 99")
 
         if current_limit == limit == 0:
-            raise CustomError("Вы ещё не поставили лимит пользователей для комнаты, чтобы сбрасывать его")
+            raise CommandError("Вы ещё не поставили лимит пользователей для комнаты, чтобы сбрасывать его")
         elif current_limit == limit:
-            raise CustomError("Комната уже имеет такой лимит")
+            raise CommandError("Комната уже имеет такой лимит")
         else:
             if limit == 0:
                 message = SuccessfulMessage("Я сбросил лимит пользователей в вашей комнате")
@@ -584,12 +579,12 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         current_name = get_user_settings(server, author)["name"]
 
         if name is not None and len(name) > 32:
-            raise CustomError("Название канала не должно быть больше 32-ух символов")
+            raise CommandError("Название канала не должно быть больше 32-ух символов")
 
         if current_name == author.display_name and name is None:
-            raise CustomError("Вы ещё не поставили название для комнаты, чтобы сбрасывать его")
+            raise CommandError("Вы ещё не поставили название для комнаты, чтобы сбрасывать его")
         elif name == current_name:
-            raise CustomError("Комната уже имеет такое название")
+            raise CommandError("Комната уже имеет такое название")
         else:
             if name is None:
                 message = SuccessfulMessage("Я сбросил название вашего канала")
@@ -618,7 +613,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         allowed_users = get_permissions_for_all_users(server, author)
 
         if user in allowed_users:
-            raise CustomError("Этот участник уже имеет доступ к вашей комнате")
+            raise CommandError("Этот участник уже имеет доступ к вашей комнате")
         else:
             add_permissions_for_user(server, author, user)
 
@@ -641,7 +636,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         allowed_users = get_permissions_for_all_users(server, author)
 
         if user not in allowed_users:
-            raise CustomError("Этот участник не имеет доступ к каналу")
+            raise CommandError("Этот участник не имеет доступ к каналу")
         else:
             remove_permissions_for_user(server, author, user)
 
@@ -667,7 +662,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         }
 
         if settings == default_settings:
-            raise CustomError("Вы ещё не сделали каких-либо изменений для комнаты, чтобы сбрасывать его настройки")
+            raise CommandError("Вы ещё не сделали каких-либо изменений для комнаты, чтобы сбрасывать его настройки")
         else:
             update_user_settings(server, author, **default_settings)
 

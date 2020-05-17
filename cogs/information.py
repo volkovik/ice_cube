@@ -2,10 +2,11 @@ import discord
 import mysql.connector
 from discord import Status
 from discord.ext import commands
+from discord.ext.commands import CommandError
 
 from main import CONFIG
 from core.commands import BotCommand
-from core.templates import SuccessfulMessage, CustomError
+from core.templates import SuccessfulMessage
 from core.converts import convert_status, convert_activity_type, convert_voice_region, convert_verification_level
 
 
@@ -102,12 +103,12 @@ class Information(commands.Cog, name="Информация"):
                 cursor.close()
                 db.close()
 
-                raise CustomError("Я не могу поставить текст больше 255 символов")
+                raise CommandError("Я не могу поставить текст больше 255 символов")
             elif text == last_text:
                 cursor.close()
                 db.close()
 
-                raise CustomError("Введёный текст идентичен вашему описанию в профиле")
+                raise CommandError("Введёный текст идентичен вашему описанию в профиле")
 
             cursor.execute("INSERT INTO users(id, bio) VALUES(%(user_id)s, %(bio)s)\n"
                            "ON DUPLICATE KEY UPDATE bio=%(bio)s", data_sql)
@@ -118,7 +119,7 @@ class Information(commands.Cog, name="Информация"):
                 cursor.close()
                 db.close()
 
-                raise CustomError("Вы не ввели текст")
+                raise CommandError("Вы не ввели текст")
             else:
                 cursor.execute("DELETE FROM users WHERE id=%(user_id)s", data_sql)
 

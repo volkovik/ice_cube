@@ -1,9 +1,10 @@
 import mysql.connector
 from discord.ext import commands
+from discord.ext.commands import CommandError
 
 from main import CONFIG
 from core.commands import BotCommand
-from core.templates import SuccessfulMessage, CustomError
+from core.templates import SuccessfulMessage
 
 
 class Settings(commands.Cog, name="Настройки"):
@@ -41,12 +42,12 @@ class Settings(commands.Cog, name="Настройки"):
                 cursor.close()
                 db.close()
 
-                raise CustomError("Я не могу поставить префикс, который больше 16 символов")
+                raise CommandError("Я не могу поставить префикс, который больше 16 символов")
             elif prefix == last_prefix or (last_prefix is None and prefix == "."):
                 cursor.close()
                 db.close()
 
-                raise CustomError("Вы уже используете данный префикс")
+                raise CommandError("Вы уже используете данный префикс")
 
             if prefix == ".":
                 cursor.execute("DELETE FROM servers WHERE id=%(server_id)s", data_sql)
@@ -60,7 +61,7 @@ class Settings(commands.Cog, name="Настройки"):
                 cursor.close()
                 db.close()
 
-                raise CustomError("Вы не ввели префикс")
+                raise CommandError("Вы не ввели префикс")
             else:
                 cursor.execute("DELETE FROM servers WHERE id=%(server_id)s", data_sql)
 
@@ -103,7 +104,7 @@ class Settings(commands.Cog, name="Настройки"):
             cursor.close()
             db.close()
 
-            raise CustomError("У вас уже есть приватные комнаты")
+            raise CommandError("У вас уже есть приватные комнаты")
         else:
             message = SuccessfulMessage("Я успешно включил систему приватных комнат")
 
@@ -144,7 +145,7 @@ class Settings(commands.Cog, name="Настройки"):
             cursor.close()
             db.close()
 
-            raise CustomError("На вашем сервере не поставлены приватные комнаты")
+            raise CommandError("На вашем сервере не поставлены приватные комнаты")
         else:
             message = SuccessfulMessage("Я успешно выключил и удалил систему приватных комнат")
 

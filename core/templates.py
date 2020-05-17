@@ -4,23 +4,6 @@ from discord import Embed
 from discord.ext.commands import HelpCommand
 
 
-class CustomError(Exception):
-    """
-    Специальное исключение, если ошибка не является частой и вызывается один раз
-
-    :param message: сообщение об ошибке
-    """
-
-    def __init__(self, message):
-        self.message = message
-
-    def __str__(self):
-        return self.message
-
-    def get_message(self):
-        return self.message
-
-
 class ErrorMessage(Embed):
     """
     Embed сообщение об ошибке
