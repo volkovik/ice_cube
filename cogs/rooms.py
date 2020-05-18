@@ -16,9 +16,12 @@ def get_user_settings(server, user):
     """
     Выдаёт настройки из базы данных комнаты пользователя на определённом сервере
 
-    :param server: класс discord.Guild
-    :param user: класс discord.User или discord.Member
-    :return: настроки комнаты в виде словаря или None, если не было найдено голосового канала или данных из базы данных
+    :param server: сервер, на котором находится комната
+    :type server: discord.Guild
+    :param user: пользователь владеющей комнатой
+    :type user: discord.Member or discord.User
+    :return: настроки комнаты, если есть данные в базе данных
+    :rtype: dict or None
     """
 
     db = mysql.connector.connect(**CONFIG["database"])
@@ -55,8 +58,10 @@ def update_user_settings(server, user, **settings):
     """
     Обновление пользовательских настроек комнат в базе данных
 
-    :param server: класс discord.Guild
-    :param user: класс discord.User или discord.Member
+    :param server: сервер, на котором находится комната
+    :type server: discord.Guild
+    :param user: пользователь владеющей комнатой
+    :type user: discord.Member or discord.User
     :param settings: параметры, которые должны быть изменены
     """
 
@@ -115,9 +120,12 @@ def get_permissions_for_all_users(server, user):
     """
     Выдаёт список пользователей, которые у который есть право подключаться к комнате user
 
-    :param server: класс discord.Guild
-    :param user: класс discord.User или discord.Member
+    :param server: сервер, на котором находится комната
+    :type server: discord.Guild
+    :param user: пользователь владеющей комнатой
+    :type user: discord.Member or discord.User
     :return: список пользователей
+    :rtype: list
     """
 
     db = mysql.connector.connect(**CONFIG["database"])
@@ -162,9 +170,12 @@ def update_permissions_for_all_users(server, user, *allowed_users):
     """
     Обновляет список пользователей, сопостовляя его со списком из базы данных
 
-    :param server: класс discord.Guild
-    :param user: класс discord.User или discord.Member
-    :param allowed_users: класс discord.User или discord.Member
+    :param server: сервер, на котором находится комната
+    :type server: discord.Guild
+    :param user: пользователь владеющей комнатой
+    :type user: discord.Member or discord.User
+    :param allowed_users: список пользователей, которые нужно заменить на текущий список в базе данных
+    :type allowed_users: discord.Member or discord.User
     """
 
     db = mysql.connector.connect(**CONFIG["database"])
@@ -208,9 +219,12 @@ def add_permissions_for_user(server, user, allowed_user):
     """
     Даёт права доступа пользователю в базе данных
 
-    :param server: класс discord.Guild
-    :param user: класс discord.User или discord.Member
-    :param allowed_user: класс discord.User или discord.Member
+    :param server: сервер, на котором находится комната
+    :type server: discord.Guild
+    :param user: пользователь владеющей комнатой
+    :type user: discord.Member or discord.User
+    :param allowed_user: пользователь, которому нужно дать доступ
+    :type allowed_user: discord.Member or discord.User
     """
 
     db = mysql.connector.connect(**CONFIG["database"])
@@ -237,9 +251,12 @@ def remove_permissions_for_user(server, user, allowed_user):
     """
     Забирает права доступа у пользователя в базе данных
 
-    :param server: класс discord.Guild
-    :param user: класс discord.User или discord.Member
-    :param allowed_user: класс discord.User или discord.Member
+    :param server: сервер, на котором находится комната
+    :type server: discord.Guild
+    :param user: пользователь владеющей комнатой
+    :type user: discord.Member or discord.User
+    :param allowed_user: пользователь, у которого нужно убрать доступ к комнате
+    :type allowed_user: discord.Member or discord.User
     """
 
     db = mysql.connector.connect(**CONFIG["database"])
@@ -266,8 +283,10 @@ def get_room_creator(server):
     """
     Выдача канала, который создаёт комнаты для пользователя
 
-    :param server: класс discord.Guild
-    :return: класс discord.VoiceChannel или None, если такого канала на сервере не имеется
+    :param server: сервер, на котром нужно найти канал
+    :type server: discord.Guild
+    :return: голосовой канал, если в базе данных есть данные
+    :rtype: discord.VoiceChannel or None
     """
 
     db = mysql.connector.connect(**CONFIG["database"])
@@ -288,10 +307,10 @@ def get_room_creator(server):
 
 async def delete_room_creator(channel):
     """
-    Удаляет канал, который должен создавать комнаты из базы данных и в дискорде
+    Удаляет войс, который должен создавать комнаты из базы данных в дискорде
 
-    :param channel: класс discord.VoiceChannel
-    :return:
+    :param channel: голосовой канал, который нужно удалить
+    :type channel: discord.VoiceChannel
     """
 
     db = mysql.connector.connect(**CONFIG["database"])
@@ -310,6 +329,46 @@ async def delete_room_creator(channel):
     await channel.delete()
 
 
+def check_room_settings(server, user, channel, settings):
+    """
+    Проверяет настройки войса и настроек из settings. Если есть различия, то в базе данных обновляются данные
+
+    :param server: сервер, на котором находится комната
+    :type server: discord.Guild
+    :param user: пользователь владеющей комнатой
+    :type user: discord.Member or discord.User
+    :param channel: войс, из которого берутся настройки
+    :type channel: discord.VoiceChannel
+    :param settings: настройки, с которыми сравниваются настройки войса
+    :type settings: dict
+    """
+
+    everyone = server.default_role
+
+    settings_from_voice = {
+        "name": channel.name if channel.name != user.display_name else None,
+        "user_limit": channel.user_limit,
+        "bitrate": channel.bitrate // 1000,
+        "is_locked": channel.overwrites_for(everyone) == Permissions(connect=False)
+    }
+
+    # Если настройки из базы данных несостыкуются с настройками текущего войса или же настройки не
+    # зафиксированны в базе данных, то записать изменения в базу данных
+    if settings != settings_from_voice:
+        update_user_settings(server, user, **settings_from_voice)
+
+    def check(p):
+        return type(p[0]) is discord.Member and p[1] == Permissions(connect=True) and p[0].id != user.id
+
+    # Пользователи, у который есть доступ к каналу, из текущего войса и из базы данных
+    allowed_users_from_voice = list(map(lambda u: u[0], filter(check, channel.overwrites.items())))
+    allowed_users_from_db = get_permissions_for_all_users(server, user)
+
+    # Если список пользователей из войса и из базы данных не сходятся, то обновить список в базе данных
+    if allowed_users_from_voice != allowed_users_from_db:
+        update_permissions_for_all_users(server, user, *allowed_users_from_voice)
+
+
 class Rooms(commands.Cog, name="Приватные комнаты"):
     def __init__(self, bot):
         self.client = bot
@@ -317,7 +376,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
     async def cog_check(self, ctx):
         author = ctx.author
         server = ctx.guild
-        everyone = server.default_role
 
         creator = get_room_creator(server)
 
@@ -329,29 +387,8 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         # Если участник, на данный момент, в своей комнате
         if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
-            channel = author.voice.channel
-
-            settings_from_voice = {
-                "name": channel.name if channel.name != author.display_name else None,
-                "user_limit": channel.user_limit,
-                "bitrate": channel.bitrate // 1000,
-                "is_locked": channel.overwrites_for(everyone) == Permissions(connect=False)
-            }
-
-            # Если настройки из базы данных несостыкуются с настройками текущего войса или же настройки не
-            # зафиксированны в базе данных, то записать изменения в базу данных
-            if settings != settings_from_voice:
-                update_user_settings(server, author, **settings_from_voice)
-
-            def check(p):
-                return type(p[0]) is discord.Member and p[1] == Permissions(connect=True) and p[0].id != author.id
-
-            allowed_users_from_voice = list(map(lambda u: u[0], filter(check, channel.overwrites.items())))
-            allowed_users_from_db = get_permissions_for_all_users(server, author)
-
-            if allowed_users_from_voice != allowed_users_from_db:
-                update_permissions_for_all_users(server, author, *allowed_users_from_voice)
-        # Иначе, если у участника нет настроек в базе данных, то выдать ошибку, что он не пользовался комнатами ранее
+            # Проверяет настройки войса с настройками из базы данных
+            check_room_settings(server, author, author.voice.channel, settings)
         elif settings is None:
             raise CommandError(f"Ранее, вы не использовали комнаты на этом сервере. Чтобы использовать эту команду, "
                                f"создайте комнату с помощью голосового канала `{creator.name}`")
@@ -460,6 +497,16 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         # Если у канала удалили категорию или его переместили в другую, то удалить канал в базе данных и на сервере
         if before.id == creator and after.category is None:
             delete_room_creator(before)
+
+            return
+
+        server = after.guild
+        # Владелец комнаты
+        author = [m for m, p in before.overwrites.items() if p == OWNER_PERMISSIONS][0]
+        settings = get_user_settings(server, author)
+
+        # Проверяет настройки войса с настройками из базы данных
+        check_room_settings(after.guild, author, after, settings)
 
     @commands.group(name="room")
     async def room_settings(self, ctx):
