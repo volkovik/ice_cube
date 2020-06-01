@@ -148,17 +148,13 @@ class Information(commands.Cog, name="Информация"):
 
             bots = len([x for x in members if x.bot])
             users = len(members) - bots
-            online = len([x for x in members if x.status is Status.online and not x.bot])
-            idle = len([x for x in members if x.status is Status.idle and not x.bot])
-            dnd = len([x for x in members if x.status is (Status.dnd or Status.do_not_disturb) and not x.bot])
+            online = len([x for x in members if x.status is not (Status.offline or Status.invisible) and not x.bot])
             offline = len([x for x in members if x.status is (Status.offline or Status.invisible) and not x.bot])
 
-            info = f"Пользователей: **{users}**"
+            info = f"Ботов: **{bots}**"
+            info += f"\nПользователей: **{users}**"
             info += f"\nОнлайн: **{online}**" if online != 0 else ""
-            info += f"\nНеактивны: **{idle}**" if idle != 0 else ""
-            info += f"\nНе беспокоить: **{dnd}**" if dnd != 0 else ""
             info += f"\nОффлайн: **{offline}**" if offline != 0 else ""
-            info += f"\nБотов: **{bots}**"
 
             return info
 
@@ -190,8 +186,8 @@ class Information(commands.Cog, name="Информация"):
             value=channels_counter(),
             inline=True
         )
-        message.set_thumbnail(
-            url=server.icon_url_as(static_format="jpg", size=512))
+        message.set_thumbnail(url=server.icon_url_as(static_format="jpg", size=512))
+        message.set_footer(text=f"ID: {server.id}")
 
         await ctx.send(embed=message)
 
