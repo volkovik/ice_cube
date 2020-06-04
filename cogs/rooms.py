@@ -295,22 +295,27 @@ def get_room_creator(server):
     cursor.execute(
         "SELECT channel_id FROM rooms_server_settings "
         "WHERE server_id=%s",
-        server.id
+        (server.id, )
     )
     result = cursor.fetchone()
+
+    channel = server.get_channel(int(result[0])) if result is not None else None
+
+    if channel is None:
+        delete_room_creator(server)
 
     cursor.close()
     db.close()
 
-    return server.get_channel(int(result[0])) if result is not None else None
+    return channel
 
 
-async def delete_room_creator(channel):
+def delete_room_creator(server):
     """
-    Удаляет войс, который должен создавать комнаты из базы данных в дискорде
+    Удаляет записи в базе данных о канале, который создаёт комнаты
 
-    :param channel: голосовой канал, который нужно удалить
-    :type channel: discord.VoiceChannel
+    :param server: Сервер, для которого нужно удалить записи
+    :type server: discord.Guild
     """
 
     db = mysql.connector.connect(**CONFIG["database"])
@@ -320,13 +325,11 @@ async def delete_room_creator(channel):
     cursor.execute(
         "DELETE FROM rooms_server_settings "
         "WHERE server_id=%s",
-        channel.id
+        (server.id, )
     )
 
     cursor.close()
     db.close()
-
-    await channel.delete()
 
 
 def check_room_settings(server, owner, channel, settings):
@@ -405,10 +408,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
     async def voice_master(self, user, before, after):
         """
         Создание и удаление команты, когда пользователей заходит, выходит или перемещается по голосовым каналам
-
-        :param user: пользователь, у которого был обновлён VoiceState
-        :param before: VoiceState до обновления
-        :param after: VoiceState после обновления
         """
 
         server = after.channel.guild if before.channel is None else before.channel.guild
@@ -418,9 +417,9 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         if creator is None:
             return
 
-        # если канала нет на сервере или он не имеет категории, то удалить этот канал в базе данных и завершить процесс
-        if creator is None or creator.category is None:
-            await delete_room_creator(creator)
+        # если канал не имеет категории, то удалить этот канал в базе данных и завершить процесс
+        if creator.category is None:
+            delete_room_creator(server)
 
             return
         else:
@@ -472,30 +471,37 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
     async def voice_master_checker_deleted_channels(self, channel):
         """
         Проверка удалённого канала на канал, который создаёт приватные комнаты
-
-        :param channel: удалённый канал
         """
 
-        creator = get_room_creator(channel.guild)
+        db = mysql.connector.connect(**CONFIG["database"])
+        cursor = db.cursor()
+
+        cursor.execute(
+            "SELECT channel_id FROM rooms_server_settings "
+            "WHERE server_id=%s",
+            (channel.guild.id, )
+        )
+        result = cursor.fetchone()
+
+        cursor.close()
+        db.close()
 
         # Если удалённый был каналом, который создаёт комнаты, то удалить его в базе данных
-        if channel.id == creator:
-            await delete_room_creator(channel)
+        if result is not None and channel.id == int(result[0]):
+            delete_room_creator(channel.guild)
 
     @commands.Cog.listener("on_guild_channel_update")
     async def voice_master_checker_updated_channels(self, before, after):
         """
         Проверка изменённого канала на канал, который создаёт приватные комнаты
-
-        :param before: канало до обновления
-        :param after: канал после обновления
         """
 
         creator = get_room_creator(before.guild)
 
         # Если у канала удалили категорию или его переместили в другую, то удалить канал в базе данных и на сервере
-        if before.id == creator and after.category is None:
-            delete_room_creator(before)
+        if before == creator and before.category != after.category:
+            delete_room_creator(after.guild)
+            await after.delete()
 
             return
 
