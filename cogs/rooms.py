@@ -1,5 +1,6 @@
 import discord
 import mysql.connector
+from enum import Enum
 from discord.ext import commands
 from discord import PermissionOverwrite as Permissions
 from discord.ext.commands import CommandError
@@ -12,14 +13,14 @@ from core.templates import SuccessfulMessage
 OWNER_PERMISSIONS = Permissions(manage_channels=True, connect=True, speak=True)
 
 
-def get_user_settings(server, user):
+def get_user_settings(server, owner):
     """
     Выдаёт настройки из базы данных комнаты пользователя на определённом сервере
 
     :param server: сервер, на котором находится комната
     :type server: discord.Guild
-    :param user: пользователь владеющей комнатой
-    :type user: discord.Member or discord.User
+    :param owner: пользователь владеющей комнатой
+    :type owner: discord.Member or discord.User
     :return: настроки комнаты, если есть данные в базе данных
     :rtype: dict or None
     """
@@ -28,19 +29,18 @@ def get_user_settings(server, user):
     db.autocommit = True
     cursor = db.cursor()
 
-    sql_format = {
-        "server": server.id,
-        "user": user.id
-    }
-
-    cursor.execute("SELECT * FROM rooms_user_settings WHERE server_id=%(server)s AND user_id=%(user)s", sql_format)
+    cursor.execute(
+        "SELECT * FROM rooms_user_settings "
+        "WHERE server_id=%s AND owner_id=%s",
+        (server.id, owner.id)
+    )
     result = cursor.fetchone()
 
     if result is not None:
         result = result[2:]
 
         settings = {
-            "name": result[0] if result[0] is not None else user.display_name,
+            "name": result[0] if result[0] is not None else owner.display_name,
             "user_limit": result[1],
             "bitrate": result[2],
             "is_locked": True if result[3] else False
@@ -54,14 +54,14 @@ def get_user_settings(server, user):
     return settings
 
 
-def update_user_settings(server, user, **settings):
+def update_user_settings(server, owner, **settings):
     """
     Обновление пользовательских настроек комнат в базе данных
 
     :param server: сервер, на котором находится комната
     :type server: discord.Guild
-    :param user: пользователь владеющей комнатой
-    :type user: discord.Member or discord.User
+    :param owner: пользователь владеющей комнатой
+    :type owner: discord.Member or discord.User
     :param settings: параметры, которые должны быть изменены
     """
 
@@ -71,32 +71,29 @@ def update_user_settings(server, user, **settings):
 
     sql_format = {
         "server": server.id,
-        "user": user.id
+        "owner": owner.id
     }
 
-    if user.voice is not None and user.voice.channel.overwrites_for(user) == OWNER_PERMISSIONS:
-        # Настройки из войса пользователя
-
-        room = user.voice.channel
+    if owner.voice is not None and owner.voice.channel.overwrites_for(owner) == OWNER_PERMISSIONS:
+        room = owner.voice.channel
         perms_connection = Permissions(connect=False)
 
+        # Настройки из войса пользователя
         settings.setdefault("is_locked", room.overwrites_for(server.default_role) == perms_connection)
         settings.setdefault("user_limit", room.user_limit)
         settings.setdefault("bitrate", room.bitrate)
-        settings.setdefault("name", room.name if room.name != user.display_name else None)
+        settings.setdefault("name", room.name if room.name != owner.display_name else None)
     else:
-        settings_db = get_user_settings(server, user)
+        settings_db = get_user_settings(server, owner)
 
         if settings_db is not None:
             # Настройки из базы данных
-
             settings.setdefault("is_locked", settings_db["is_locked"])
             settings.setdefault("user_limit", settings_db["user_limit"])
             settings.setdefault("bitrate", settings_db["bitrate"])
             settings.setdefault("name", settings_db["name"])
         else:
             # Настройки, которые стоят по умолчанию, когда пользователь создаёт комнату впервые
-
             settings.setdefault("is_locked", False)
             settings.setdefault("user_limit", 0)
             settings.setdefault("bitrate", 64)
@@ -105,8 +102,8 @@ def update_user_settings(server, user, **settings):
     sql_format.update(settings)
 
     cursor.execute(
-        "INSERT INTO rooms_user_settings(server_id, user_id, name, user_limit, bitrate, is_locked) "
-        "VALUES(%(server)s, %(user)s, %(name)s, %(user_limit)s, %(bitrate)s, %(is_locked)s) "
+        "INSERT INTO rooms_user_settings(server_id, owner_id, name, user_limit, bitrate, is_locked) "
+        "VALUES(%(server)s, %(owner)s, %(name)s, %(user_limit)s, %(bitrate)s, %(is_locked)s) "
         "ON DUPLICATE KEY UPDATE name=%(name)s, user_limit=%(user_limit)s, bitrate=%(bitrate)s, "
         "is_locked=%(is_locked)s",
         sql_format
@@ -116,98 +113,103 @@ def update_user_settings(server, user, **settings):
     cursor.close()
 
 
-def get_permissions_for_all_users(server, user):
+def get_permissions_for_all_users(server, owner):
     """
-    Выдаёт список пользователей, которые у который есть право подключаться к комнате user
+    Выдаёт словарь с правами пользователей
 
     :param server: сервер, на котором находится комната
     :type server: discord.Guild
-    :param user: пользователь владеющей комнатой
-    :type user: discord.Member or discord.User
-    :return: список пользователей
-    :rtype: list
+    :param owner: пользователь владеющей комнатой
+    :type owner: discord.Member or discord.User
+    :return: словарь с правами пользователей
+    :rtype: dict
     """
 
     db = mysql.connector.connect(**CONFIG["database"])
     db.autocommit = True
     cursor = db.cursor()
 
-    sql_format = {
-        "server": server.id,
-        "user": user.id
-    }
-
     cursor.execute(
-        "SELECT allowed_user_id FROM rooms_user_permissions "
-        "WHERE server_id=%(server)s AND user_id=%(user)s",
-        sql_format
+        "SELECT user_id, permissions FROM rooms_user_permissions "
+        "WHERE server_id=%s AND owner_id=%s",
+        (server.id, owner.id)
     )
     result = cursor.fetchall()
 
-    allowed_users = []
+    users = {}
 
-    for line in result:
-        id = line[0]
-        member = server.get_member(int(id))
+    for user_id, permissions in result:
+        user = server.get_member(int(user_id))
 
-        if member is not None:
-            allowed_users.append(member)
+        if user is not None:
+            users[user] = Permissions(connect=PermissionsForRoom[permissions].value)
         else:
-            sql_format["allowed_user"] = id
-
             cursor.execute(
-                "DELETE FROM rooms_user_permissions WHERE allowed_user_id=%(allowed_user)s",
-                sql_format
+                "DELETE FROM rooms_user_permissions "
+                "WHERE owner_id=%s",
+                owner.id
             )
 
     cursor.close()
     db.cursor()
 
-    return allowed_users if len(allowed_users) != 0 else None
+    return users
 
 
-def update_permissions_for_all_users(server, user, *allowed_users):
+def update_permissions_for_all_users(server, owner, users):
     """
     Обновляет список пользователей, сопостовляя его со списком из базы данных
 
     :param server: сервер, на котором находится комната
     :type server: discord.Guild
-    :param user: пользователь владеющей комнатой
-    :type user: discord.Member or discord.User
-    :param allowed_users: список пользователей, которые нужно заменить на текущий список в базе данных
-    :type allowed_users: discord.Member or discord.User
+    :param owner: пользователь владеющей комнатой
+    :type owner: discord.Member or discord.User
+    :param users: словарь из пользователей и их прав, которые нужно заменить на текущий список в базе данных
+    :type users: dict
     """
 
     db = mysql.connector.connect(**CONFIG["database"])
     db.autocommit = True
     cursor = db.cursor()
 
-    allowed_users_db = get_permissions_for_all_users(server, user)
+    users_db = get_permissions_for_all_users(server, owner)
 
     sql_format = {
         "server": server.id,
-        "user": user.id
+        "owner": owner.id
     }
 
-    # Ищет пользователей, которые имеют доступ к комнате
-    for member in allowed_users:
-        if (allowed_users_db is not None and member not in allowed_users_db) or allowed_users_db is None:
-            sql_format["allowed_user"] = member.id
+    # Если в базе данных нет какой-либо информации правах пользователей
+    if users_db is None:
+        for user, permissions in users.items():
+            sql_format["user"] = user.id
+            sql_format["permissions"] = PermissionsForRoom(permissions.connect).name
 
             cursor.execute(
-                "INSERT INTO rooms_user_permissions(server_id, user_id, allowed_user_id) "
-                "VALUES (%(server)s, %(user)s, %(allowed_user)s)",
+                "INSERT INTO rooms_user_permissions(server_id, owner_id, user_id, permissions) "
+                "VALUER (%(server, %(owner)s, %(user)s, %(permissions)s))",
+                sql_format
+            )
+    else:
+        # Ищет пользователей, которых нет в базе данных
+        for user, permissions in users:
+            sql_format["user"] = user.id
+            sql_format["permissions"] = PermissionsForRoom(permissions.connect).name
+
+            cursor.execute(
+                "INSERT INTO rooms_user_permissions(server_id, owner_id, user_id, permissions) "
+                "VALUE (%(server)s, %(owner)s, %(user)s, %(permissions)s) "
+                "ON DUPLICATE KEY UPDATE permissions=%(permissions)s",
                 sql_format
             )
 
-    # Удаляет пользователей из базы данных, которые не были в войсе
-    if allowed_users_db is not None:
-        for m in set(allowed_users_db) - set(allowed_users):
-            sql_format["allowed_user"] = m.id
+        # Удаляет записи в базе данных о пользователях, которые не были в голосовом канале
+        for user, _ in set(users.items()) - set(users.items()):
+            sql_format["user"] = user.id
 
             cursor.execute(
-                "DELETE FROM rooms_user_permissions WHERE server_id=%(server)s "
-                "AND user_id=%(user)s AND allowed_user_id=%(allowed_user)s",
+                "DELETE FROM rooms_user_permissions "
+                "WHERE server_id=%(server)s, owner_id=%(owner)s, user_id=%(user)s",
                 sql_format
             )
 
@@ -215,16 +217,18 @@ def update_permissions_for_all_users(server, user, *allowed_users):
     db.close()
 
 
-def add_permissions_for_user(server, user, allowed_user):
+def update_permissions_for_user(server, owner, user, permissions):
     """
     Даёт права доступа пользователю в базе данных
 
     :param server: сервер, на котором находится комната
     :type server: discord.Guild
-    :param user: пользователь владеющей комнатой
+    :param owner: пользователь владеющей комнатой
+    :type owner: discord.Member or discord.User
+    :param user: пользователь, которому нужно дать доступ
     :type user: discord.Member or discord.User
-    :param allowed_user: пользователь, которому нужно дать доступ
-    :type allowed_user: discord.Member or discord.User
+    :param permissions: права для пользователя
+    :type permissions: PermissionsForRoom
     """
 
     db = mysql.connector.connect(**CONFIG["database"])
@@ -233,13 +237,15 @@ def add_permissions_for_user(server, user, allowed_user):
 
     sql_format = {
         "server": server.id,
+        "owner": owner.id,
         "user": user.id,
-        "allowed_user": allowed_user.id
+        "permissions": permissions.name
     }
 
     cursor.execute(
-        "INSERT IGNORE INTO rooms_user_permissions(server_id, user_id, allowed_user_id) "
-        "VALUES (%(server)s, %(user)s, %(allowed_user)s)",
+        "INSERT INTO rooms_user_permissions(server_id, owner_id, user_id, permissions) "
+        "VALUES (%(server)s, %(owner)s, %(user)s, %(permissions)s)"
+        "ON DUPLICATE KEY UPDATE permissions=%(permissions)s",
         sql_format
     )
 
@@ -247,32 +253,26 @@ def add_permissions_for_user(server, user, allowed_user):
     db.close()
 
 
-def remove_permissions_for_user(server, user, allowed_user):
+def remove_permissions_for_user(server, owner, user):
     """
     Забирает права доступа у пользователя в базе данных
 
     :param server: сервер, на котором находится комната
     :type server: discord.Guild
-    :param user: пользователь владеющей комнатой
+    :param owner: пользователь владеющей комнатой
+    :type owner: discord.Member or discord.User
+    :param user: пользователь, у которого нужно убрать доступ к комнате
     :type user: discord.Member or discord.User
-    :param allowed_user: пользователь, у которого нужно убрать доступ к комнате
-    :type allowed_user: discord.Member or discord.User
     """
 
     db = mysql.connector.connect(**CONFIG["database"])
     db.autocommit = True
     cursor = db.cursor()
 
-    sql_format = {
-        "server": server.id,
-        "user": user.id,
-        "allowed_user": allowed_user.id
-    }
-
     cursor.execute(
         "DELETE FROM rooms_user_permissions "
-        "WHERE server_id=%(server)s AND user_id=%(user)s AND allowed_user_id=%(allowed_user)s",
-        sql_format
+        "WHERE server_id=%s AND owner_id=%s AND user_id=%s",
+        (server.id, owner.id, user.id)
     )
 
     cursor.close()
@@ -292,11 +292,11 @@ def get_room_creator(server):
     db = mysql.connector.connect(**CONFIG["database"])
     cursor = db.cursor()
 
-    sql_format = {
-        "server": server.id
-    }
-
-    cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server)s", sql_format)
+    cursor.execute(
+        "SELECT channel_id FROM rooms_server_settings "
+        "WHERE server_id=%s",
+        server.id
+    )
     result = cursor.fetchone()
 
     cursor.close()
@@ -317,11 +317,11 @@ async def delete_room_creator(channel):
     db.autocommit = True
     cursor = db.cursor()
 
-    sql_format = {
-        "server": channel.guild.id
-    }
-
-    cursor.execute("DELETE FROM rooms_server_settings WHERE server_id=%(server)s", sql_format)
+    cursor.execute(
+        "DELETE FROM rooms_server_settings "
+        "WHERE server_id=%s",
+        channel.id
+    )
 
     cursor.close()
     db.close()
@@ -329,14 +329,14 @@ async def delete_room_creator(channel):
     await channel.delete()
 
 
-def check_room_settings(server, user, channel, settings):
+def check_room_settings(server, owner, channel, settings):
     """
     Проверяет настройки войса и настроек из settings. Если есть различия, то в базе данных обновляются данные
 
     :param server: сервер, на котором находится комната
     :type server: discord.Guild
-    :param user: пользователь владеющей комнатой
-    :type user: discord.Member or discord.User
+    :param owner: пользователь владеющей комнатой
+    :type owner: discord.Member or discord.User
     :param channel: войс, из которого берутся настройки
     :type channel: discord.VoiceChannel
     :param settings: настройки, с которыми сравниваются настройки войса
@@ -346,7 +346,7 @@ def check_room_settings(server, user, channel, settings):
     everyone = server.default_role
 
     settings_from_voice = {
-        "name": channel.name if channel.name != user.display_name else None,
+        "name": channel.name if channel.name != owner.display_name else None,
         "user_limit": channel.user_limit,
         "bitrate": channel.bitrate // 1000,
         "is_locked": channel.overwrites_for(everyone) == Permissions(connect=False)
@@ -355,18 +355,24 @@ def check_room_settings(server, user, channel, settings):
     # Если настройки из базы данных несостыкуются с настройками текущего войса или же настройки не
     # зафиксированны в базе данных, то записать изменения в базу данных
     if settings != settings_from_voice:
-        update_user_settings(server, user, **settings_from_voice)
+        update_user_settings(server, owner, **settings_from_voice)
 
     def check(p):
-        return type(p[0]) is discord.Member and p[1] == Permissions(connect=True) and p[0].id != user.id
+        return type(p[0]) is discord.Member and p[1] == Permissions(connect=True) and p[0].id != owner.id
 
     # Пользователи, у который есть доступ к каналу, из текущего войса и из базы данных
-    allowed_users_from_voice = list(map(lambda u: u[0], filter(check, channel.overwrites.items())))
-    allowed_users_from_db = get_permissions_for_all_users(server, user)
+    users_from_voice = dict(filter(check, channel.overwrites.items()))
+    users_from_db = get_permissions_for_all_users(server, owner)
 
     # Если список пользователей из войса и из базы данных не сходятся, то обновить список в базе данных
-    if allowed_users_from_voice != allowed_users_from_db:
-        update_permissions_for_all_users(server, user, *allowed_users_from_voice)
+    if users_from_voice != users_from_db:
+        update_permissions_for_all_users(server, owner, users_from_voice)
+
+
+class PermissionsForRoom(Enum):
+    banned = False
+    default = None
+    allowed = True
 
 
 class Rooms(commands.Cog, name="Приватные комнаты"):
@@ -428,7 +434,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             # начинается конфигурация комнаты
             if creator == channel:
                 settings = get_user_settings(server, user)
-                allowed_users = get_permissions_for_all_users(server, user)
                 everyone = server.default_role
 
                 if settings is None:
@@ -443,11 +448,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
                     user: OWNER_PERMISSIONS,
                     everyone: Permissions(connect=not settings["is_locked"])
                 }
-
-                # Если в базе данных имеются данные о правах пользователя, то добавить их в список
-                if allowed_users is not None:
-                    permissions = [Permissions(connect=True)] * len(allowed_users)
-                    permissions_for_room.update(dict(zip(allowed_users, permissions)))
+                permissions_for_room.update(get_permissions_for_all_users(server, user))
 
                 room = await server.create_voice_channel(
                     name=settings["name"],
@@ -461,12 +462,10 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         if before.channel:
             # когда пользователь выходит из голосового канала
-
             channel = before.channel
 
             if channel in creator_category.voice_channels and channel != creator and len(channel.members) == 0:
                 # удалить голосовой канал, если он является комнатой и в ней нет пользователей
-
                 await channel.delete()
 
     @commands.Cog.listener("on_guild_channel_delete")
@@ -694,50 +693,75 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             await ctx.send(embed=message)
 
     @room_settings.command(
-        cls=BotCommand, name="add",
+        cls=BotCommand, name="allow",
         usage={"пользователь": ("упоминание или ID участника сервера", True)}
     )
-    async def give_permissions_to_member(self, ctx, user: commands.MemberConverter):
+    async def allow_member_to_join_room(self, ctx, user: commands.MemberConverter):
         """
         Дать доступ пользователю заходить в комнату
         """
 
         author = ctx.author
         server = ctx.guild
-        allowed_users = get_permissions_for_all_users(server, author)
+        users_with_permissions = get_permissions_for_all_users(server, author)
+        permissions = PermissionsForRoom.allowed
 
-        if user in allowed_users:
+        if user in users_with_permissions and users_with_permissions[user].connect == permissions.value:
             raise CommandError("Этот участник уже имеет доступ к вашей комнате")
         else:
-            add_permissions_for_user(server, author, user)
+            update_permissions_for_user(server, author, user, permissions)
 
             if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
-                await author.voice.channel.set_permissions(user, overwrite=Permissions(connect=True))
+                await author.voice.channel.set_permissions(user, overwrite=Permissions(connect=permissions.value))
 
             await ctx.send(embed=SuccessfulMessage(f"Я дал доступ `{user.display_name}` к вашей комнате"))
+
+    @room_settings.command(
+        cls=BotCommand, name="ban",
+        usage={"пользователь": ("упоминание или ID участника сервера", True)}
+    )
+    async def ban_member_from_room(self, ctx, user: commands.MemberConverter):
+        """
+        Заблокировать доступ пользователю заходить в комнату
+        """
+
+        author = ctx.author
+        server = ctx.guild
+        users_with_permissions = get_permissions_for_all_users(server, author)
+        permissions = PermissionsForRoom.banned
+
+        if user in users_with_permissions and users_with_permissions[user].connect == permissions.value:
+            raise CommandError("У этого участника уже заблокирован доступ к вашей комнате")
+        else:
+            update_permissions_for_user(server, author, user, permissions)
+
+            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+                await author.voice.channel.set_permissions(user, overwrite=Permissions(connect=permissions.value))
+
+            await ctx.send(embed=SuccessfulMessage(f"Я заброкировал доступ у `{user.display_name}` к вашей комнате"))
 
     @room_settings.command(
         cls=BotCommand, name="remove",
         usage={"пользователь": ("упоминание или ID участника сервера", True)}
     )
-    async def remove_permissions_to_member(self, ctx, user: commands.MemberConverter):
+    async def set_default_permissions_for_member(self, ctx, user: commands.MemberConverter):
         """
-        Забрать доступ у пользователя заходить в комнату
+        Поставить доступ к каналу у пользователя по умолчанию
         """
 
         author = ctx.author
         server = ctx.guild
-        allowed_users = get_permissions_for_all_users(server, author)
+        users_with_permissions = get_permissions_for_all_users(server, author)
 
-        if user not in allowed_users:
-            raise CommandError("Этот участник не имеет доступ к каналу")
+        if user not in users_with_permissions:
+            raise CommandError("Этот участник не имеет особых прав, чтобы сбрасывать их")
         else:
             remove_permissions_for_user(server, author, user)
 
             if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
                 await author.voice.channel.set_permissions(user, overwrite=Permissions(connect=None))
 
-            await ctx.send(embed=SuccessfulMessage(f"Я забрал доступ у `{user.display_name}` к вашей комнате"))
+            await ctx.send(embed=SuccessfulMessage(f"Я сбросил права доступа у `{user.display_name}` к вашей комнате"))
 
     @room_settings.command(name="reset")
     async def reset_room_settings(self, ctx):
