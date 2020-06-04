@@ -529,7 +529,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             message.set_footer(text=f"Посмотреть все доступные команды для управления комнатой можно "
                                     f"через {ctx.prefix}help user")
 
-            allowed_members = get_permissions_for_all_users(server, author)
+            users_with_permissions = get_permissions_for_all_users(server, author)
 
             # Информация о комнате
             message.description = f"**Название: ** {name}\n" \
@@ -538,13 +538,21 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
                                   f"**Битрейт:** {bitrate} кбит/с"
 
             # Перечесление пользователей с правами доступа
-            if allowed_members is not None:
-                allowed_members.sort(key=lambda m: m.name)
+            if users_with_permissions is not None:
+                allowed = list(filter(lambda p: p[1].connect is True, users_with_permissions.items()))
+                banned = list(filter(lambda p: p[1].connect is False, users_with_permissions.items()))
 
-                message.add_field(
-                    name="Список пользователей с доступом",
-                    value="\n".join([f"**{m}** (ID: {m.id})" for m in allowed_members])
-                )
+                if len(allowed) != 0:
+                    message.add_field(
+                        name="Есть доступ",
+                        value="\n".join([f"**{m}**" for m, _ in allowed])
+                    )
+
+                if len(banned) != 0:
+                    message.add_field(
+                        name="Заблокирован доступ",
+                        value="\n".join([f"**{m}**" for m, _ in banned])
+                    )
 
             await ctx.send(embed=message)
 
@@ -564,7 +572,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         else:
             update_user_settings(server, author, is_locked=True)
 
-            if author.voice is None or author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+            if author.voice is not None or author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
                 await author.voice.channel.set_permissions(everyone, overwrite=Permissions(connect=False))
 
             await ctx.send(embed=SuccessfulMessage("Я закрыл вашу комнату"))
