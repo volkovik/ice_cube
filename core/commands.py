@@ -125,3 +125,8 @@ class Settings(commands.Cog, name="Настройки"):
 
         cursor.close()
         db.close()
+
+
+def setup(bot):
+    bot.add_cog(ErrorHandler(bot))
+    bot.add_cog(Settings(bot))

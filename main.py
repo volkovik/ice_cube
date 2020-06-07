@@ -5,7 +5,6 @@ import os
 from discord.ext import commands
 
 from core.templates import Help
-from core.commands import Settings, ErrorHandler
 
 # Загрузка настроек бота
 with open("config.json") as f:
@@ -43,8 +42,7 @@ def get_prefix(bot, message):
 
 client = commands.Bot(command_prefix=get_prefix)
 client.help_command = Help()
-client.add_cog(Settings)
-client.add_cog(ErrorHandler)
+client.load_extension("core.commands")
 
 cogs_path = "cogs/"  # Директория, где расположены модули
 for name_of_file in [f for f in os.listdir("cogs") if os.path.isfile(os.path.join("cogs", f))]:
