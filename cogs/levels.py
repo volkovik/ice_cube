@@ -74,14 +74,16 @@ class Level(commands.Cog, name="Уровни"):
     @commands.Cog.listener(name="on_message")
     async def when_message(self, message):
         author = message.author
-        server = message.guild
 
-        user_exp = get_user_experience(server, author)
+        if not author.bot:
+            server = message.guild
 
-        update_user_experience(server, author, 25)
+            user_exp = get_user_experience(server, author)
 
-        if user_exp % 500 > (user_exp + 25) % 500:
-            await message.channel.send(f"{author.mention} получил `{(user_exp + 25) // 500} уровень`")
+            update_user_experience(server, author, 25)
+
+            if user_exp % 500 > (user_exp + 25) % 500:
+                await message.channel.send(f"{author.mention} получил `{(user_exp + 25) // 500} уровень`")
 
     @commands.command(
         cls=BotCommand, name="rank",
