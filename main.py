@@ -31,7 +31,7 @@ def get_prefix(bot, message):
         cursor.execute("SELECT prefix FROM servers WHERE id=%(server_id)s;", data_sql)
         result = cursor.fetchone()
 
-        if result is not None:
+        if result is not None and result[0] is not None:
             prefix = result[0]
 
         cursor.close()
