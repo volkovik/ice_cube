@@ -1,9 +1,11 @@
 import discord
 import mysql.connector
 from discord.ext import commands
+from discord.ext.commands import CommandError
 
 from main import CONFIG
 from core.commands import BotCommand
+from core.templates import SuccessfulMessage
 
 
 def get_user_experience(server, user):
@@ -67,6 +69,37 @@ def update_user_experience(server, user, exp):
     cursor.close()
 
 
+def predicate_check_level_system(ctx):
+    """
+    Проверка, включёна ли система уровней на сервере
+
+    :param ctx: сообщение или context
+    :type ctx: commands.Context or discord.Message
+    :return: True, если включена, иначе False
+    :rtype: bool
+    """
+
+    db = mysql.connector.connect(**CONFIG["database"])
+    cursor = db.cursor()
+
+    cursor.execute(
+        "SELECT level_system FROM servers "
+        "WHERE id=%s",
+        (ctx.guild.id, )
+    )
+    result = cursor.fetchone()
+
+    return result[0] if result is not None else False
+
+
+def level_system_is_on():
+    """
+    Декоратор для discord.Command, с проверкой, включена ли система уровней на сервере
+    """
+
+    return commands.check(predicate_check_level_system)
+
+
 class Level(commands.Cog, name="Уровни"):
     def __init__(self, bot):
         self.client = bot
@@ -75,7 +108,7 @@ class Level(commands.Cog, name="Уровни"):
     async def when_message(self, message):
         author = message.author
 
-        if not author.bot:
+        if not author.bot and predicate_check_level_system(message):
             server = message.guild
 
             user_exp = get_user_experience(server, author)
@@ -89,6 +122,7 @@ class Level(commands.Cog, name="Уровни"):
         cls=BotCommand, name="rank",
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}
     )
+    @level_system_is_on()
     async def get_current_level(self, ctx, user: commands.MemberConverter = None):
         """
         Показывает уровень пользователя
@@ -109,6 +143,100 @@ class Level(commands.Cog, name="Уровни"):
             value=f"{user_exp % 500}/500"
         )
         message.set_author(name=user.display_name, icon_url=user.avatar_url_as(static_format="jpg"))
+
+        await ctx.send(embed=message)
+
+    @commands.group(name="setlevels", invoke_without_command=True)
+    @commands.has_permissions(administrator=True)
+    async def rooms_settings(self, ctx):
+        """
+        Настройка системы уровней на сервере
+        """
+
+        await ctx.send_help(ctx.command.name)
+
+    @rooms_settings.command(cls=BotCommand, name="enable")
+    @commands.has_permissions(administrator=True)
+    async def enable_level_system(self, ctx):
+        """
+        Включить систему уровней на сервере
+        """
+
+        server = ctx.guild
+
+        db = mysql.connector.connect(**CONFIG["database"])
+        db.autocommit = True
+        cursor = db.cursor()
+
+        data_sql = {"server": server.id}
+
+        cursor.execute(
+            "SELECT level_system FROM servers "
+            "WHERE id=%(server)s",
+            data_sql
+        )
+        result = cursor.fetchone()
+        is_on = result[0] if result is not None else False
+
+        if is_on:
+            cursor.close()
+            db.close()
+
+            raise CommandError("На вашем сервере уже вылючена система уровней")
+        else:
+            message = SuccessfulMessage("Я успешно включил систему уровней")
+
+            cursor.execute(
+                "INSERT INTO servers(id, level_system) "
+                "VALUES (%(server)s, 1) "
+                "ON DUPLICATE KEY UPDATE level_system=1",
+                data_sql
+            )
+
+            cursor.close()
+            db.close()
+
+        await ctx.send(embed=message)
+
+    @rooms_settings.command(cls=BotCommand, name="disable")
+    @commands.has_permissions(administrator=True)
+    async def disable_level_system(self, ctx):
+        """
+        Выключить систему уровней на сервере
+        """
+
+        server = ctx.guild
+
+        db = mysql.connector.connect(**CONFIG["database"])
+        db.autocommit = True
+        cursor = db.cursor()
+
+        data_sql = {"server": server.id}
+
+        cursor.execute(
+            "SELECT level_system FROM servers "
+            "WHERE id=%(server)s",
+            data_sql
+        )
+        result = cursor.fetchone()
+        is_on = result[0] if result is not None else False
+
+        if not is_on:
+            cursor.close()
+            db.close()
+
+            raise CommandError("На вашем сервере уже выключена система уровней")
+        else:
+            message = SuccessfulMessage("Я успешно выключил систему уровней")
+
+            cursor.execute(
+                "UPDATE IGNORE servers SET level_system=0 "
+                "WHERE id=%(server)s",
+                data_sql
+            )
+
+            cursor.close()
+            db.close()
 
         await ctx.send(embed=message)
 
