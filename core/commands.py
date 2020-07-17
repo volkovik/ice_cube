@@ -82,8 +82,13 @@ class Settings(commands.Cog, name="Настройки"):
         Session = sessionmaker(bind=engine_db)
         session = Session()
 
-        user_from_db = session.query(Server).filter_by(server_id=server.id).first()
-        last_prefix = user_from_db.prefix if user_from_db is not None and user_from_db.prefix is not None else "."
+        server_from_db = session.query(Server).filter_by(server_id=server.id).first()
+
+        if server_from_db is None:
+            server_from_db = Server(server_id=server.id)
+            session.add(server_from_db)
+
+        last_prefix = server_from_db.prefix if server_from_db.prefix is not None else "."
 
         if prefix is not None:
             if len(prefix) > 32:
@@ -92,16 +97,16 @@ class Settings(commands.Cog, name="Настройки"):
                 raise CommandError("Вы уже используете данный префикс")
 
             if prefix == ".":
-                user_from_db.prefix = None
+                server_from_db.prefix = None
                 message = SuccessfulMessage("Я успешно сбросил префикс на стандартный")
             else:
-                user_from_db.prefix = prefix
+                server_from_db.prefix = prefix
                 message = SuccessfulMessage("Я успешно изменил префикс")
         else:
             if last_prefix == '.':
                 raise CommandError("Вы не ввели префикс")
             else:
-                user_from_db.prefix = None
+                server_from_db.prefix = None
 
                 message = SuccessfulMessage("Я успешно сбросил префикс на стандартный")
 
