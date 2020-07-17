@@ -16,7 +16,7 @@ class User(Base):
     __tablename__ = "users"
 
     user_id = Column(Integer, primary_key=True)
-    bio_information = Column(String(512))
+    bio = Column(String(512))
 
 
 class Server(Base):
