@@ -39,9 +39,9 @@ class UserSettingsOfRoom(Base):
     server_id = Column(Integer, primary_key=True)
     owner_id = Column(Integer, primary_key=True)
     name = Column(String(32), nullable=True, default=None)
-    user_limit = Column(Integer, default=0)
-    bitrate = Column(Integer, default=64)
-    is_locked = Column(Boolean, default=False)
+    user_limit = Column(Integer, default=0, nullable=False)
+    bitrate = Column(Integer, default=64, nullable=False)
+    is_locked = Column(Boolean, default=False, nullable=False)
 
 
 class UserPermissionsOfRoom(Base):
@@ -50,4 +50,4 @@ class UserPermissionsOfRoom(Base):
     server_id = Column(Integer, primary_key=True)
     owner_id = Column(Integer, primary_key=True)
     user_id = Column(Integer, primary_key=True)
-    permissions = Column(Enum(PermissionsForRoom), default=PermissionsForRoom.default)
+    permissions = Column(Enum(PermissionsForRoom), default=PermissionsForRoom.default, nullable=False)
