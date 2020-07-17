@@ -31,10 +31,10 @@ def get_prefix(bot, message):
         Session = sessionmaker(bind=engine_db)
         session = Session()
 
-        result = session.query(Server).filter_by(server_id=message.guild.id).first()
+        server_from_db = session.query(Server).filter_by(server_id=message.guild.id).first()
 
-        if result is not None:
-            prefix = result.prefix
+        if server_from_db is not None and server_from_db.prefix is not None:
+            prefix = server_from_db.prefix
 
     return commands.when_mentioned_or(prefix)(bot, message)
 

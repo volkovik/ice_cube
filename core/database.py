@@ -23,7 +23,7 @@ class Server(Base):
     __tablename__ = "servers"
 
     server_id = Column(Integer, primary_key=True)
-    prefix = Column(String(32))
+    prefix = Column(String(32), nullable=True)
 
 
 class ServerSettingsOfRooms(Base):
