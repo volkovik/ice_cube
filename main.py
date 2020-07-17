@@ -1,14 +1,19 @@
 import discord
 import json
-import mysql.connector
+import sqlalchemy
 import os
 from discord.ext import commands
+from sqlalchemy.orm import sessionmaker
 
 from core.templates import Help
+from core.database import Base, Server
 
 # Загрузка настроек бота
 with open("config.json") as f:
     CONFIG = json.load(f)
+
+engine_db = sqlalchemy.create_engine("sqlite:///ice_cube")
+Base.metadata.create_all(bind=engine_db)
 
 
 def get_prefix(bot, message):
@@ -23,19 +28,13 @@ def get_prefix(bot, message):
     prefix = "."
 
     if message.guild:
-        db = mysql.connector.connect(**CONFIG["database"])
-        cursor = db.cursor()
+        Session = sessionmaker(bind=engine_db)
+        session = Session()
 
-        data_sql = {"server_id": message.guild.id}
+        result = session.query(Server).filter_by(server_id=message.guild.id).first()
 
-        cursor.execute("SELECT prefix FROM servers WHERE id=%(server_id)s;", data_sql)
-        result = cursor.fetchone()
-
-        if result is not None and result[0] is not None:
-            prefix = result[0]
-
-        cursor.close()
-        db.close()
+        if result is not None:
+            prefix = result.prefix
 
     return commands.when_mentioned_or(prefix)(bot, message)
 
