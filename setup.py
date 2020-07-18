@@ -2,9 +2,9 @@ from setuptools import setup, find_packages
 
 setup(
     name="Ice_Cube",
-    version="0.2a1",
+    version="0.2a2",
     packages=find_packages(),
-    install_requires=["discord.py>=1.3.4", "mysql-connector-python>=8.0.0"],
+    install_requires=["discord.py>=1.3.4", "sqlalchemy>=1.3.18"],
     python_requires="==3.7",
     author="Daniil Syurmachenko",
     author_email="vxlkxvik@yandex.ru",
