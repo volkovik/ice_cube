@@ -1,11 +1,11 @@
 import discord
-import mysql.connector
-from enum import Enum
 from discord.ext import commands
 from discord import PermissionOverwrite as Permissions
 from discord.ext.commands import CommandError
+from sqlalchemy.orm import sessionmaker
 
-from main import CONFIG
+from main import engine_db
+from core.database import ServerSettingsOfRooms, UserSettingsOfRoom, UserPermissionsOfRoom, PermissionsForRoom
 from core.commands import BotCommand
 from core.templates import SuccessfulMessage
 
@@ -25,33 +25,18 @@ def get_user_settings(server, owner):
     :rtype: dict or None
     """
 
-    db = mysql.connector.connect(**CONFIG["database"])
-    db.autocommit = True
-    cursor = db.cursor()
+    Session = sessionmaker(bind=engine_db)
+    session = Session()
 
-    cursor.execute(
-        "SELECT * FROM rooms_user_settings "
-        "WHERE server_id=%s AND owner_id=%s",
-        (server.id, owner.id)
-    )
-    result = cursor.fetchone()
+    settings_from_db = session.query(UserSettingsOfRoom).filter_by(server_id=server.id, owner_id=owner.id).first()
 
-    if result is not None:
-        result = result[2:]
+    if settings_from_db is not None:
+        settings = settings_from_db.__dict__
+        settings["name"] = owner.display_name if settings["name"] is None else settings["name"]
 
-        settings = {
-            "name": result[0] if result[0] is not None else owner.display_name,
-            "user_limit": result[1],
-            "bitrate": result[2],
-            "is_locked": True if result[3] else False
-        }
+        return settings_from_db.__dict__
     else:
-        settings = None
-
-    db.close()
-    cursor.close()
-
-    return settings
+        return None
 
 
 def update_user_settings(server, owner, **settings):
@@ -65,14 +50,14 @@ def update_user_settings(server, owner, **settings):
     :param settings: параметры, которые должны быть изменены
     """
 
-    db = mysql.connector.connect(**CONFIG["database"])
-    db.autocommit = True
-    cursor = db.cursor()
+    Session = sessionmaker(bind=engine_db)
+    session = Session()
 
-    sql_format = {
-        "server": server.id,
-        "owner": owner.id
-    }
+    settings_from_db = session.query(UserSettingsOfRoom).filter_by(server_id=server.id, owner_id=owner.id).first()
+
+    if settings_from_db is None:
+        settings_from_db = UserSettingsOfRoom(server_id=server.id, owner_id=owner.id)
+        session.add(settings_from_db)
 
     if owner.voice is not None and owner.voice.channel.overwrites_for(owner) == OWNER_PERMISSIONS:
         room = owner.voice.channel
@@ -99,18 +84,12 @@ def update_user_settings(server, owner, **settings):
             settings.setdefault("bitrate", 64)
             settings.setdefault("name", None)
 
-    sql_format.update(settings)
+    settings_from_db.is_locked = settings["is_locked"]
+    settings_from_db.user_limit = settings["user_limit"]
+    settings_from_db.bitrate = settings["bitrate"]
+    settings_from_db.name = settings["name"]
 
-    cursor.execute(
-        "INSERT INTO rooms_user_settings(server_id, owner_id, name, user_limit, bitrate, is_locked) "
-        "VALUES(%(server)s, %(owner)s, %(name)s, %(user_limit)s, %(bitrate)s, %(is_locked)s) "
-        "ON DUPLICATE KEY UPDATE name=%(name)s, user_limit=%(user_limit)s, bitrate=%(bitrate)s, "
-        "is_locked=%(is_locked)s",
-        sql_format
-    )
-
-    db.close()
-    cursor.close()
+    session.commit()
 
 
 def get_permissions_for_all_users(server, owner):
@@ -125,33 +104,22 @@ def get_permissions_for_all_users(server, owner):
     :rtype: dict
     """
 
-    db = mysql.connector.connect(**CONFIG["database"])
-    db.autocommit = True
-    cursor = db.cursor()
+    Session = sessionmaker(bind=engine_db)
+    session = Session()
 
-    cursor.execute(
-        "SELECT user_id, permissions FROM rooms_user_permissions "
-        "WHERE server_id=%s AND owner_id=%s",
-        (server.id, owner.id)
-    )
-    result = cursor.fetchall()
+    all_permissions = session.query(UserPermissionsOfRoom).filter_by(server_id=server.id, owner_id=owner.id).all()
 
     users = {}
 
-    for user_id, permissions in result:
-        user = server.get_member(int(user_id))
+    for user in all_permissions:
+        member = server.get_member(user.user_id)
 
-        if user is not None:
-            users[user] = Permissions(connect=PermissionsForRoom[permissions].value)
+        if member is not None:
+            users[member] = Permissions(connect=user.permissions.value)
         else:
-            cursor.execute(
-                "DELETE FROM rooms_user_permissions "
-                "WHERE owner_id=%s",
-                owner.id
-            )
+            user.delete()
 
-    cursor.close()
-    db.cursor()
+    session.commit()
 
     return users
 
@@ -168,53 +136,41 @@ def update_permissions_for_all_users(server, owner, users):
     :type users: dict
     """
 
-    db = mysql.connector.connect(**CONFIG["database"])
-    db.autocommit = True
-    cursor = db.cursor()
+    Session = sessionmaker(bind=engine_db)
+    session = Session()
 
     users_db = get_permissions_for_all_users(server, owner)
-
-    sql_format = {
-        "server": server.id,
-        "owner": owner.id
-    }
 
     # Если в базе данных нет какой-либо информации правах пользователей
     if users_db is None:
         for user, permissions in users.items():
-            sql_format["user"] = user.id
-            sql_format["permissions"] = PermissionsForRoom(permissions.connect).name
-
-            cursor.execute(
-                "INSERT INTO rooms_user_permissions(server_id, owner_id, user_id, permissions) "
-                "VALUER (%(server, %(owner)s, %(user)s, %(permissions)s))",
-                sql_format
+            permissions_for_user = UserPermissionsOfRoom(
+                server_id=server.id,
+                owner_id=owner.id,
+                user_id=user.id,
+                permission=PermissionsForRoom(permissions.connect)
             )
+
+            session.add(permissions_for_user)
     else:
         # Ищет пользователей, которых нет в базе данных
         for user, permissions in users:
-            sql_format["user"] = user.id
-            sql_format["permissions"] = PermissionsForRoom(permissions.connect).name
-
-            cursor.execute(
-                "INSERT INTO rooms_user_permissions(server_id, owner_id, user_id, permissions) "
-                "VALUE (%(server)s, %(owner)s, %(user)s, %(permissions)s) "
-                "ON DUPLICATE KEY UPDATE permissions=%(permissions)s",
-                sql_format
+            permissions_for_user = UserPermissionsOfRoom(
+                server_id=server.id,
+                owner_id=owner.id,
+                user_id=user.id,
+                permission=PermissionsForRoom(permissions.connect)
             )
+
+            session.add(permissions_for_user)
 
         # Удаляет записи в базе данных о пользователях, которые не были в голосовом канале
         for user, _ in set(users.items()) - set(users.items()):
-            sql_format["user"] = user.id
+            session.query(UserPermissionsOfRoom).filter_by(
+                server_id=server.id, owner_id=owner.id, user_id=user.id
+            ).delete()
 
-            cursor.execute(
-                "DELETE FROM rooms_user_permissions "
-                "WHERE server_id=%(server)s, owner_id=%(owner)s, user_id=%(user)s",
-                sql_format
-            )
-
-    cursor.close()
-    db.close()
+    session.commit()
 
 
 def update_permissions_for_user(server, owner, user, permissions):
@@ -231,26 +187,20 @@ def update_permissions_for_user(server, owner, user, permissions):
     :type permissions: PermissionsForRoom
     """
 
-    db = mysql.connector.connect(**CONFIG["database"])
-    db.autocommit = True
-    cursor = db.cursor()
+    Session = sessionmaker(bind=engine_db)
+    session = Session()
 
-    sql_format = {
-        "server": server.id,
-        "owner": owner.id,
-        "user": user.id,
-        "permissions": permissions.name
-    }
+    permissions_for_user = session.query(UserPermissionsOfRoom).filter_by(
+        server_id=server.id, owner_id=owner.id, user_id=user.id
+    ).first()
 
-    cursor.execute(
-        "INSERT INTO rooms_user_permissions(server_id, owner_id, user_id, permissions) "
-        "VALUES (%(server)s, %(owner)s, %(user)s, %(permissions)s)"
-        "ON DUPLICATE KEY UPDATE permissions=%(permissions)s",
-        sql_format
-    )
+    if permissions_for_user is None:
+        permissions_for_user = UserPermissionsOfRoom(server_id=server.id, owner_id=owner.id, user_id=user.id)
+        session.add(permissions_for_user)
 
-    cursor.close()
-    db.close()
+    permissions_for_user.permissions = permissions
+
+    session.commit()
 
 
 def remove_permissions_for_user(server, owner, user):
@@ -265,18 +215,17 @@ def remove_permissions_for_user(server, owner, user):
     :type user: discord.Member or discord.User
     """
 
-    db = mysql.connector.connect(**CONFIG["database"])
-    db.autocommit = True
-    cursor = db.cursor()
+    Session = sessionmaker(bind=engine_db)
+    session = Session()
 
-    cursor.execute(
-        "DELETE FROM rooms_user_permissions "
-        "WHERE server_id=%s AND owner_id=%s AND user_id=%s",
-        (server.id, owner.id, user.id)
-    )
+    permissions_for_user = session.query(UserPermissionsOfRoom).filter_by(
+        server_id=server.id, owner_id=owner.id, user_id=user.id
+    ).first()
 
-    cursor.close()
-    db.close()
+    if permissions_for_user is not None:
+        session.delete(permissions_for_user)
+
+    session.commit()
 
 
 def get_room_creator(server):
@@ -289,23 +238,15 @@ def get_room_creator(server):
     :rtype: discord.VoiceChannel or None
     """
 
-    db = mysql.connector.connect(**CONFIG["database"])
-    cursor = db.cursor()
+    Session = sessionmaker(bind=engine_db)
+    session = Session()
 
-    cursor.execute(
-        "SELECT channel_id FROM rooms_server_settings "
-        "WHERE server_id=%s",
-        (server.id, )
-    )
-    result = cursor.fetchone()
+    channel_from_db = session.query(ServerSettingsOfRooms).filter_by(server_id=server.id).first()
 
-    channel = server.get_channel(int(result[0])) if result is not None else None
+    channel = server.get_channel(channel_from_db.channel_id_creates_rooms) if channel_from_db is not None else None
 
     if channel is None:
         delete_room_creator(server)
-
-    cursor.close()
-    db.close()
 
     return channel
 
@@ -318,18 +259,15 @@ def delete_room_creator(server):
     :type server: discord.Guild
     """
 
-    db = mysql.connector.connect(**CONFIG["database"])
-    db.autocommit = True
-    cursor = db.cursor()
+    Session = sessionmaker(bind=engine_db)
+    session = Session()
 
-    cursor.execute(
-        "DELETE FROM rooms_server_settings "
-        "WHERE server_id=%s",
-        (server.id, )
-    )
+    channel_from_db = session.query(ServerSettingsOfRooms).filter_by(server_id=server.id).first()
 
-    cursor.close()
-    db.close()
+    if channel_from_db is not None:
+        session.delete(channel_from_db)
+
+    session.commit()
 
 
 def check_room_settings(server, owner, channel, settings):
@@ -370,12 +308,6 @@ def check_room_settings(server, owner, channel, settings):
     # Если список пользователей из войса и из базы данных не сходятся, то обновить список в базе данных
     if users_from_voice != users_from_db:
         update_permissions_for_all_users(server, owner, users_from_voice)
-
-
-class PermissionsForRoom(Enum):
-    banned = False
-    default = None
-    allowed = True
 
 
 class Rooms(commands.Cog, name="Приватные комнаты"):
@@ -436,12 +368,8 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
                 everyone = server.default_role
 
                 if settings is None:
-                    settings = {
-                        "name": user.display_name,
-                        "user_limit": 0,
-                        "is_locked": False,
-                        "bitrate": 64
-                    }
+                    update_user_settings(server, user)
+                    settings = get_user_settings(server, user)
 
                 permissions_for_room = {
                     user: OWNER_PERMISSIONS,
@@ -473,21 +401,10 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         Проверка удалённого канала на канал, который создаёт приватные комнаты
         """
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        cursor = db.cursor()
-
-        cursor.execute(
-            "SELECT channel_id FROM rooms_server_settings "
-            "WHERE server_id=%s",
-            (channel.guild.id, )
-        )
-        result = cursor.fetchone()
-
-        cursor.close()
-        db.close()
+        creator = get_room_creator(channel.guild)
 
         # Если удалённый был каналом, который создаёт комнаты, то удалить его в базе данных
-        if result is not None and channel.id == int(result[0]):
+        if channel == creator:
             delete_room_creator(channel.guild)
 
     @commands.Cog.listener("on_guild_channel_update")
@@ -519,15 +436,26 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         Настройка вашей приватной комнаты
         """
 
-        # Если команда была использована без сабкоманды, то отправить информацию об комнате
+        # Если команда была использована без сабкоманды, то отправить информацию о комнате
         if ctx.invoked_subcommand is None:
             author = ctx.author
             server = ctx.guild
-            name, user_limit, bitrate, is_locked = get_user_settings(server, author).values()
+
+            settings = get_user_settings(server, author)
+            creator = get_room_creator(server)
+
+            if settings is None:
+                raise CommandError(f"Вы не ещё не использовали приватные комнаты на этом сервере. Зайдите в голосовой "
+                                   f"канал `{creator}`, чтобы создать комнату")
+
+            name = settings["name"]
+            user_limit = settings["user_limit"]
+            bitrate = settings["bitrate"]
+            is_locked = settings["is_locked"]
 
             message = discord.Embed(title=f"Информация о комнате пользователя \"{author.display_name}\"")
             message.set_footer(text=f"Посмотреть все доступные команды для управления комнатой можно "
-                                    f"через {ctx.prefix}help user")
+                                    f"через {ctx.prefix}help room")
 
             users_with_permissions = get_permissions_for_all_users(server, author)
 
@@ -826,20 +754,11 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         server = ctx.guild
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
+        Session = sessionmaker(bind=engine_db)
+        session = Session()
+        settings = session.query(ServerSettingsOfRooms).filter_by(server_id=server.id).first()
 
-        data_sql = {"server_id": server.id}
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        last_voice = result[0] if result is not None else None
-
-        if last_voice is not None:
-            cursor.close()
-            db.close()
-
+        if settings is not None:
             raise CommandError("У вас уже есть приватные комнаты")
         else:
             message = SuccessfulMessage("Я успешно включил систему приватных комнат")
@@ -847,16 +766,12 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             category = await server.create_category_channel(name="Приватные комнаты")
             voice = await server.create_voice_channel(name="Создать комнату", category=category)
 
-            data_sql["voice_id"] = voice.id
-
-            cursor.execute("INSERT INTO rooms_server_settings(server_id, channel_id)\n"
-                           "VALUES(%(server_id)s, %(voice_id)s)\n"
-                           "ON DUPLICATE KEY UPDATE channel_id=%(voice_id)s", data_sql)
-
-            cursor.close()
-            db.close()
+            settings = ServerSettingsOfRooms(server_id=server.id, channel_id_creates_rooms=voice.id)
+            session.add(settings)
 
         await ctx.send(embed=message)
+
+        session.commit()
 
     @rooms_settings.command(cls=BotCommand, name="disable")
     @commands.has_permissions(administrator=True)
@@ -867,25 +782,16 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         server = ctx.guild
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
+        Session = sessionmaker(bind=engine_db)
+        session = Session()
+        settings = session.query(ServerSettingsOfRooms).filter_by(server_id=server.id).first()
 
-        data_sql = {"server_id": server.id}
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        last_voice = result[0] if result is not None else None
-
-        if last_voice is None:
-            cursor.close()
-            db.close()
-
+        if settings is None:
             raise CommandError("На вашем сервере не поставлены приватные комнаты")
         else:
             message = SuccessfulMessage("Я успешно выключил и удалил систему приватных комнат")
 
-            voice = server.get_channel(int(last_voice))
+            voice = server.get_channel(settings.channel_id_creates_rooms)
             category = voice.category
 
             if len(category.voice_channels) != 0:
@@ -894,12 +800,11 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
             await category.delete()
 
-            cursor.execute("DELETE FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-
-            cursor.close()
-            db.close()
+            session.delete(settings)
 
         await ctx.send(embed=message)
+
+        session.commit()
 
 
 def setup(bot):

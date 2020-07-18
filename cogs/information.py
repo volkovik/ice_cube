@@ -1,10 +1,11 @@
 import discord
-import mysql.connector
 from discord import Status
 from discord.ext import commands
 from discord.ext.commands import CommandError
+from sqlalchemy.orm import sessionmaker
 
-from main import CONFIG
+from main import engine_db
+from core.database import User
 from core.commands import BotCommand
 from core.templates import SuccessfulMessage
 from core.converts import convert_status, convert_activity_type, convert_voice_region, convert_verification_level
@@ -40,17 +41,11 @@ class Information(commands.Cog, name="Информация"):
             activity = f"**{convert_activity_type(user.activity.type)}** " \
                        f"{user.activity.name}\n" if user.activity else ""
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        cursor = db.cursor()
+        Session = sessionmaker(bind=engine_db)
+        session = Session()
 
-        data_sql = {"user_id": user.id}
-
-        cursor.execute("SELECT bio FROM users WHERE id=%(user_id)s", data_sql)
-        result = cursor.fetchone()
-        bio = result[0] if result is not None else None
-
-        cursor.close()
-        db.close()
+        user_from_db = session.query(User).filter_by(user_id=user.id).first()
+        bio = user_from_db.bio if user_from_db is not None else None
 
         if bio is None:
             if user == ctx.author:
@@ -85,50 +80,35 @@ class Information(commands.Cog, name="Информация"):
         Редактирование описания в профиле
         """
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
+        Session = sessionmaker(bind=engine_db)
+        session = Session()
 
-        data_sql = {
-            "user_id": ctx.author.id,
-            "bio": text
-        }
+        user_from_db = session.query(User).filter_by(user_id=ctx.author.id).first()
+        if user_from_db is None:
+            user_from_db = User(user_id=ctx.author.id)
+            session.add(user_from_db)
 
-        cursor.execute("SELECT bio FROM users WHERE id=%(user_id)s", data_sql)
-        result = cursor.fetchone()
-        last_text = result[0] if result is not None else None
+        previous_bio = user_from_db.bio
 
         if text is not None:
-            if len(text) > 255:
-                cursor.close()
-                db.close()
-
-                raise CommandError("Я не могу поставить текст больше 255 символов")
-            elif text == last_text:
-                cursor.close()
-                db.close()
-
+            if len(text) > 512:
+                raise CommandError("Я не могу поставить текст больше 512 символов")
+            elif text == previous_bio:
                 raise CommandError("Введёный текст идентичен вашему описанию в профиле")
-
-            cursor.execute("INSERT INTO users(id, bio) VALUES(%(user_id)s, %(bio)s)\n"
-                           "ON DUPLICATE KEY UPDATE bio=%(bio)s", data_sql)
-
-            message = SuccessfulMessage("Я изменил описание в вашем профиле")
+            else:
+                user_from_db.bio = text
+                message = SuccessfulMessage("Я изменил описание в вашем профиле")
         else:
-            if last_text is None:
-                cursor.close()
-                db.close()
-
+            if previous_bio is None:
                 raise CommandError("Вы не ввели текст")
             else:
-                cursor.execute("DELETE FROM users WHERE id=%(user_id)s", data_sql)
+                user_from_db.bio = None
 
                 message = SuccessfulMessage("Я удалил описание в вашем профиле")
 
         await ctx.send(embed=message)
 
-        cursor.close()
-        db.close()
+        session.commit()
 
     @commands.command(cls=BotCommand, name="server")
     async def server_information(self, ctx):
