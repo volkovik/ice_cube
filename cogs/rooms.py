@@ -754,20 +754,11 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         server = ctx.guild
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
+        Session = sessionmaker(bind=engine_db)
+        session = Session()
+        settings = session.query(ServerSettingsOfRooms).filter_by(server_id=server.id).first()
 
-        data_sql = {"server_id": server.id}
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        last_voice = result[0] if result is not None else None
-
-        if last_voice is not None:
-            cursor.close()
-            db.close()
-
+        if settings is not None:
             raise CommandError("У вас уже есть приватные комнаты")
         else:
             message = SuccessfulMessage("Я успешно включил систему приватных комнат")
@@ -775,16 +766,12 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             category = await server.create_category_channel(name="Приватные комнаты")
             voice = await server.create_voice_channel(name="Создать комнату", category=category)
 
-            data_sql["voice_id"] = voice.id
-
-            cursor.execute("INSERT INTO rooms_server_settings(server_id, channel_id)\n"
-                           "VALUES(%(server_id)s, %(voice_id)s)\n"
-                           "ON DUPLICATE KEY UPDATE channel_id=%(voice_id)s", data_sql)
-
-            cursor.close()
-            db.close()
+            settings = ServerSettingsOfRooms(server_id=server.id, channel_id_creates_rooms=voice.id)
+            session.add(settings)
 
         await ctx.send(embed=message)
+
+        session.commit()
 
     @rooms_settings.command(cls=BotCommand, name="disable")
     @commands.has_permissions(administrator=True)
@@ -795,25 +782,16 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         server = ctx.guild
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
+        Session = sessionmaker(bind=engine_db)
+        session = Session()
+        settings = session.query(ServerSettingsOfRooms).filter_by(server_id=server.id).first()
 
-        data_sql = {"server_id": server.id}
-
-        cursor.execute("SELECT channel_id FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-        result = cursor.fetchone()
-        last_voice = result[0] if result is not None else None
-
-        if last_voice is None:
-            cursor.close()
-            db.close()
-
+        if settings is None:
             raise CommandError("На вашем сервере не поставлены приватные комнаты")
         else:
             message = SuccessfulMessage("Я успешно выключил и удалил систему приватных комнат")
 
-            voice = server.get_channel(int(last_voice))
+            voice = server.get_channel(settings.channel_id_creates_rooms)
             category = voice.category
 
             if len(category.voice_channels) != 0:
@@ -822,12 +800,11 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
             await category.delete()
 
-            cursor.execute("DELETE FROM rooms_server_settings WHERE server_id=%(server_id)s", data_sql)
-
-            cursor.close()
-            db.close()
+            session.delete(settings)
 
         await ctx.send(embed=message)
+
+        session.commit()
 
 
 def setup(bot):
