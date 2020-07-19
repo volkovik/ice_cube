@@ -1,5 +1,4 @@
 import discord
-import json
 import sqlalchemy
 import os
 from discord.ext import commands
@@ -7,10 +6,6 @@ from sqlalchemy.orm import sessionmaker
 
 from core.templates import Help
 from core.database import Base, Server
-
-# Загрузка настроек бота
-with open("config.json") as f:
-    CONFIG = json.load(f)
 
 engine_db = sqlalchemy.create_engine("sqlite:///ice_cube")
 Base.metadata.create_all(bind=engine_db)
@@ -56,4 +51,4 @@ async def on_ready():
 
 
 if __name__ == '__main__':
-    client.run(CONFIG["token"])
+    client.run(os.environ.get("BOT_TOKEN"))
