@@ -137,5 +137,9 @@ dmypy.json
 # PyCharm settings
 .idea
 
-# Settings
-config.json
+# Fordel with logs
+/logs
+
+# SQLite
+*.db
+*.sqlite3
