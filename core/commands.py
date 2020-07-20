@@ -4,7 +4,7 @@ from discord.ext.commands import CommandError
 from sqlalchemy.orm import sessionmaker
 from traceback import print_exception
 
-from main import engine_db
+from main import ENGINE_DB
 from core.database import Server
 from core.templates import ErrorMessage, SuccessfulMessage
 
@@ -79,7 +79,7 @@ class Settings(commands.Cog, name="Настройки"):
 
         server = ctx.guild
 
-        Session = sessionmaker(bind=engine_db)
+        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
         server_from_db = session.query(Server).filter_by(server_id=server.id).first()

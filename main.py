@@ -7,8 +7,11 @@ from sqlalchemy.orm import sessionmaker
 from core.templates import Help
 from core.database import Base, Server
 
-engine_db = sqlalchemy.create_engine("sqlite:///ice_cube")
-Base.metadata.create_all(bind=engine_db)
+DEV_MODE = os.environ.get("DEV_MODE")
+DEFAULT_PREFIX = "." if not DEV_MODE else ">"
+
+ENGINE_DB = sqlalchemy.create_engine("sqlite:///ice_cube")
+Base.metadata.create_all(bind=ENGINE_DB)
 
 
 def get_prefix(bot, message):
@@ -20,10 +23,10 @@ def get_prefix(bot, message):
     :return: конечный префикс
     """
 
-    prefix = "."
+    prefix = DEFAULT_PREFIX
 
     if message.guild:
-        Session = sessionmaker(bind=engine_db)
+        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
         server_from_db = session.query(Server).filter_by(server_id=message.guild.id).first()
@@ -45,7 +48,13 @@ for name_of_file in [f for f in os.listdir("cogs") if os.path.isfile(os.path.joi
 
 @client.event
 async def on_ready():
-    await client.change_presence(activity=discord.Streaming(name=".help", url="https://twitch.tv/volkovik/"))
+    if DEV_MODE:
+        await client.change_presence(status=discord.Status.do_not_disturb, activity=discord.Activity(
+            name="dev",
+            type=discord.ActivityType.watching
+        ))
+    else:
+        await client.change_presence(activity=discord.Streaming(name=".help", url="https://twitch.tv/volkovik/"))
 
     print(f"Бот {client.user.name} был запущен")
 

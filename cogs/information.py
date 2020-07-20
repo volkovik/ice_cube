@@ -4,7 +4,7 @@ from discord.ext import commands
 from discord.ext.commands import CommandError
 from sqlalchemy.orm import sessionmaker
 
-from main import engine_db
+from main import ENGINE_DB
 from core.database import User
 from core.commands import BotCommand
 from core.templates import SuccessfulMessage
@@ -41,7 +41,7 @@ class Information(commands.Cog, name="Информация"):
             activity = f"**{convert_activity_type(user.activity.type)}** " \
                        f"{user.activity.name}\n" if user.activity else ""
 
-        Session = sessionmaker(bind=engine_db)
+        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
         user_from_db = session.query(User).filter_by(user_id=user.id).first()
@@ -80,7 +80,7 @@ class Information(commands.Cog, name="Информация"):
         Редактирование описания в профиле
         """
 
-        Session = sessionmaker(bind=engine_db)
+        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
         user_from_db = session.query(User).filter_by(user_id=ctx.author.id).first()
