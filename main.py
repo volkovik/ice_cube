@@ -12,7 +12,7 @@ from core.database import Base, Server
 __version__ = "0.2b"
 
 # Константы
-DEV_MODE = os.environ.get("DEV_MODE")
+DEV_MODE = True if os.environ.get("DEV_MODE") == "True" else False
 DEFAULT_PREFIX = "." if not DEV_MODE else ">"
 
 # База данных
