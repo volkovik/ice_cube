@@ -173,6 +173,10 @@ class Information(commands.Cog, name="Информация"):
 
     @commands.command(cls=BotCommand, name="info")
     async def about_bot(self, ctx):
+        """
+        информация о боте
+        """
+
         message = discord.Embed(
             title="Информация о Ice Cube",
             description="**Ice Cube** - это простой бот, основанный на языке Python. Сейчас, функционал у бота "
