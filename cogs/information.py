@@ -4,7 +4,7 @@ from discord.ext import commands
 from discord.ext.commands import CommandError
 from sqlalchemy.orm import sessionmaker
 
-from main import ENGINE_DB
+from main import ENGINE_DB, __version__
 from core.database import User
 from core.commands import BotCommand
 from core.templates import SuccessfulMessage
@@ -168,6 +168,32 @@ class Information(commands.Cog, name="Информация"):
         )
         message.set_thumbnail(url=server.icon_url_as(static_format="jpg", size=512))
         message.set_footer(text=f"ID: {server.id}")
+
+        await ctx.send(embed=message)
+
+    @commands.command(cls=BotCommand, name="info")
+    async def about_bot(self, ctx):
+        message = discord.Embed(
+            title="Информация о Ice Cube",
+            description="**Ice Cube** - это простой бот, основанный на языке Python. Сейчас, функционал у бота "
+                        "скудный, но со временем он будет пополняться. Разработчик бота: "
+                        "**[volkovik](https://github.com/volkovik)**",
+            color=0xAEE4FC
+        )
+        message.set_thumbnail(url=self.client.user.avatar_url)
+        message.set_footer(
+            text="© Все права защищены volkovik 2020",
+            icon_url="https://avatars.githubusercontent.com/u/40608600"
+        )
+        message.add_field(
+            name="Полезные ссылки",
+            value="[Discord сервер](https://discord.gg/w2C7E4b)\n"
+                  "[GitHub репозиторий](https://github.com/volkovik/ice_cube)"
+        )
+        message.add_field(
+            name="Версия бота",
+            value=__version__
+        )
 
         await ctx.send(embed=message)
 

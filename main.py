@@ -9,6 +9,8 @@ from datetime import datetime
 from core.templates import Help
 from core.database import Base, Server
 
+__version__ = "0.2b"
+
 # Константы
 DEV_MODE = os.environ.get("DEV_MODE")
 DEFAULT_PREFIX = "." if not DEV_MODE else ">"
