@@ -16,7 +16,7 @@ DEV_MODE = True if os.environ.get("DEV_MODE") == "True" else False
 DEFAULT_PREFIX = "." if not DEV_MODE else ">"
 
 # База данных
-ENGINE_DB = sqlalchemy.create_engine(os.environ.get("DATABASE"))
+ENGINE_DB = sqlalchemy.create_engine(os.environ.get("DATABASE_URL"))
 Base.metadata.create_all(bind=ENGINE_DB)
 
 # Конфигурация логирования
