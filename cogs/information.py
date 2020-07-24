@@ -44,7 +44,7 @@ class Information(commands.Cog, name="Информация"):
         Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
-        user_from_db = session.query(User).filter_by(user_id=user.id).first()
+        user_from_db = session.query(User).filter_by(user_id=str(user.id)).first()
         bio = user_from_db.bio if user_from_db is not None else None
 
         if bio is None:
@@ -83,9 +83,9 @@ class Information(commands.Cog, name="Информация"):
         Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
-        user_from_db = session.query(User).filter_by(user_id=ctx.author.id).first()
+        user_from_db = session.query(User).filter_by(user_id=str(ctx.author.id)).first()
         if user_from_db is None:
-            user_from_db = User(user_id=ctx.author.id)
+            user_from_db = User(user_id=str(ctx.author.id))
             session.add(user_from_db)
 
         previous_bio = user_from_db.bio
