@@ -62,7 +62,7 @@ def get_prefix(bot, message):
         Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
-        server_from_db = session.query(Server).filter_by(server_id=message.guild.id).first()
+        server_from_db = session.query(Server).filter_by(server_id=str(message.guild.id)).first()
 
         if server_from_db is not None and server_from_db.prefix is not None:
             prefix = server_from_db.prefix

@@ -28,7 +28,9 @@ def get_user_settings(server, owner):
     Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
-    settings_from_db = session.query(UserSettingsOfRoom).filter_by(server_id=server.id, owner_id=owner.id).first()
+    settings_from_db = session.query(UserSettingsOfRoom).filter_by(
+        server_id=str(server.id), owner_id=str(owner.id)
+    ).first()
 
     if settings_from_db is not None:
         settings = settings_from_db.__dict__
@@ -53,10 +55,15 @@ def update_user_settings(server, owner, **settings):
     Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
-    settings_from_db = session.query(UserSettingsOfRoom).filter_by(server_id=server.id, owner_id=owner.id).first()
+    db_kwargs = {
+        "server_id": str(server.id),
+        "owner_id": str(owner.id)
+    }
+
+    settings_from_db = session.query(UserSettingsOfRoom).filter_by(**db_kwargs).first()
 
     if settings_from_db is None:
-        settings_from_db = UserSettingsOfRoom(server_id=server.id, owner_id=owner.id)
+        settings_from_db = UserSettingsOfRoom(**db_kwargs)
         session.add(settings_from_db)
 
     if owner.voice is not None and owner.voice.channel.overwrites_for(owner) == OWNER_PERMISSIONS:
@@ -107,24 +114,26 @@ def get_permissions_for_all_users(server, owner):
     Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
-    all_permissions = session.query(UserPermissionsOfRoom).filter_by(server_id=server.id, owner_id=owner.id).all()
+    all_permissions = session.query(UserPermissionsOfRoom).filter_by(
+        server_id=str(server.id), owner_id=str(owner.id)
+    ).all()
 
     users = {}
 
     for user in all_permissions:
-        member = server.get_member(user.user_id)
+        member = server.get_member(int(user.user_id))
 
         if member is not None:
             users[member] = Permissions(connect=user.permissions.value)
         else:
-            user.delete()
+            session.delete(user)
 
     session.commit()
 
     return users
 
 
-def update_permissions_for_all_users(server, owner, users):
+def update_permissions_for_all_users(server, owner, permissions):
     """
     Обновляет список пользователей, сопостовляя его со списком из базы данных
 
@@ -132,43 +141,43 @@ def update_permissions_for_all_users(server, owner, users):
     :type server: discord.Guild
     :param owner: пользователь владеющей комнатой
     :type owner: discord.Member or discord.User
-    :param users: словарь из пользователей и их прав, которые нужно заменить на текущий список в базе данных
-    :type users: dict
+    :param permissions: словарь из пользователей и их прав, которые нужно заменить на текущий список в базе данных
+    :type permissions: dict
     """
 
     Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
-    users_db = get_permissions_for_all_users(server, owner)
+    db_kwargs = {
+        "server_id": str(server.id),
+        "owner_id": str(owner.id)
+    }
 
-    # Если в базе данных нет какой-либо информации правах пользователей
-    if users_db is None:
-        for user, permissions in users.items():
-            permissions_for_user = UserPermissionsOfRoom(
-                server_id=server.id,
-                owner_id=owner.id,
-                user_id=user.id,
-                permission=PermissionsForRoom(permissions.connect)
-            )
+    data_from_db = session.query(UserPermissionsOfRoom).filter_by(**db_kwargs).all()
 
-            session.add(permissions_for_user)
-    else:
-        # Ищет пользователей, которых нет в базе данных
-        for user, permissions in users:
-            permissions_for_user = UserPermissionsOfRoom(
-                server_id=server.id,
-                owner_id=owner.id,
-                user_id=user.id,
-                permission=PermissionsForRoom(permissions.connect)
-            )
+    permissions_from_db = {}
 
-            session.add(permissions_for_user)
+    for user in data_from_db:
+        member = server.get_member(int(user.user_id))
 
-        # Удаляет записи в базе данных о пользователях, которые не были в голосовом канале
-        for user, _ in set(users.items()) - set(users.items()):
-            session.query(UserPermissionsOfRoom).filter_by(
-                server_id=server.id, owner_id=owner.id, user_id=user.id
-            ).delete()
+        if member is not None:
+            permissions_from_db[member] = user.permissions
+        else:
+            session.delete(user)
+
+    added = [(m, p) for m, p in permissions.items() if m not in permissions_from_db]
+    deleted = [(m, p) for m, p in permissions_from_db.items() if m not in permissions]
+    modified = [(m, p) for m, p in permissions.items()
+                if m in permissions_from_db and permissions_from_db[m] != permissions[m]]
+
+    for member, perms in added:
+        session.add(UserPermissionsOfRoom(**db_kwargs, user_id=str(member.id), permissions=perms))
+
+    for member, _ in deleted:
+        session.query(UserPermissionsOfRoom).filter_by(**db_kwargs, user_id=str(member.id)).delete()
+
+    for member, perms in modified:
+        session.query(UserPermissionsOfRoom).filter_by(**db_kwargs, user_id=str(member.id)).first().permissions = perms
 
     session.commit()
 
@@ -190,12 +199,16 @@ def update_permissions_for_user(server, owner, user, permissions):
     Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
-    permissions_for_user = session.query(UserPermissionsOfRoom).filter_by(
-        server_id=server.id, owner_id=owner.id, user_id=user.id
-    ).first()
+    db_kwargs = {
+        "server_id": str(server.id),
+        "owner_id": str(owner.id),
+        "user_id": str(user.id)
+    }
+
+    permissions_for_user = session.query(UserPermissionsOfRoom).filter_by(**db_kwargs).first()
 
     if permissions_for_user is None:
-        permissions_for_user = UserPermissionsOfRoom(server_id=server.id, owner_id=owner.id, user_id=user.id)
+        permissions_for_user = UserPermissionsOfRoom(**db_kwargs)
         session.add(permissions_for_user)
 
     permissions_for_user.permissions = permissions
@@ -219,7 +232,7 @@ def remove_permissions_for_user(server, owner, user):
     session = Session()
 
     permissions_for_user = session.query(UserPermissionsOfRoom).filter_by(
-        server_id=server.id, owner_id=owner.id, user_id=user.id
+        server_id=str(server.id), owner_id=str(owner.id), user_id=str(user.id)
     ).first()
 
     if permissions_for_user is not None:
@@ -241,9 +254,9 @@ def get_room_creator(server):
     Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
-    channel_from_db = session.query(ServerSettingsOfRooms).filter_by(server_id=server.id).first()
+    channel_from_db = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
 
-    channel = server.get_channel(channel_from_db.channel_id_creates_rooms) if channel_from_db is not None else None
+    channel = server.get_channel(int(channel_from_db.channel_id_creates_rooms)) if channel_from_db is not None else None
 
     if channel is None:
         delete_room_creator(server)
@@ -262,7 +275,7 @@ def delete_room_creator(server):
     Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
-    channel_from_db = session.query(ServerSettingsOfRooms).filter_by(server_id=server.id).first()
+    channel_from_db = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
 
     if channel_from_db is not None:
         session.delete(channel_from_db)
@@ -299,15 +312,15 @@ def check_room_settings(server, owner, channel, settings):
         update_user_settings(server, owner, **settings_from_voice)
 
     def check(p):
-        return type(p[0]) is discord.Member and p[1] == Permissions(connect=True) and p[0].id != owner.id
+        return type(p[0]) is discord.Member and p[0].id != owner.id
 
     # Пользователи, у который есть доступ к каналу, из текущего войса и из базы данных
-    users_from_voice = dict(filter(check, channel.overwrites.items()))
-    users_from_db = get_permissions_for_all_users(server, owner)
+    users_from_voice = dict(
+        filter(check, map(lambda m: (m[0], PermissionsForRoom(m[1].connect)), channel.overwrites.items()))
+    )
 
     # Если список пользователей из войса и из базы данных не сходятся, то обновить список в базе данных
-    if users_from_voice != users_from_db:
-        update_permissions_for_all_users(server, owner, users_from_voice)
+    update_permissions_for_all_users(server, owner, users_from_voice)
 
 
 def check_rooms_system(ctx):
@@ -783,7 +796,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
-        settings = session.query(ServerSettingsOfRooms).filter_by(server_id=server.id).first()
+        settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
 
         if settings is not None:
             raise CommandError("У вас уже есть приватные комнаты")
@@ -793,7 +806,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             category = await server.create_category_channel(name="Приватные комнаты")
             voice = await server.create_voice_channel(name="Создать комнату", category=category)
 
-            settings = ServerSettingsOfRooms(server_id=server.id, channel_id_creates_rooms=voice.id)
+            settings = ServerSettingsOfRooms(server_id=str(server.id), channel_id_creates_rooms=str(voice.id))
             session.add(settings)
 
         await ctx.send(embed=message)
@@ -811,7 +824,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
-        settings = session.query(ServerSettingsOfRooms).filter_by(server_id=server.id).first()
+        settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
 
         if settings is None:
             raise CommandError("На вашем сервере не поставлены приватные комнаты")
