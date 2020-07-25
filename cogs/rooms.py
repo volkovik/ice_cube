@@ -831,7 +831,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         else:
             message = SuccessfulMessage("Я успешно выключил и удалил систему приватных комнат")
 
-            voice = server.get_channel(settings.channel_id_creates_rooms)
+            voice = server.get_channel(int(settings.channel_id_creates_rooms))
             category = voice.category
 
             if len(category.voice_channels) != 0:
