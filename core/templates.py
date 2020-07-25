@@ -91,7 +91,7 @@ class Help(HelpCommand):
 
         string = f"{self.clean_prefix}{command}"
 
-        if args:
+        if args and command.signature:
             string += " " + command.signature
 
         return string
@@ -115,7 +115,8 @@ class Help(HelpCommand):
             commands_descriptions = []
 
             for cmd in cmds:
-                commands_descriptions.append(f"{self.get_command_signature(cmd)} - {self.shorten_text(cmd.short_doc)}")
+                commands_descriptions.append(f"`{self.get_command_signature(cmd)}` - "
+                                             f"{self.shorten_text(cmd.short_doc)}")
 
             self.embed.add_field(
                 name=category,
@@ -140,7 +141,7 @@ class Help(HelpCommand):
         if command.usage:
             self.embed.add_field(
                 name="Аргументы",
-                value=" ".join([(f"<{key}>" if params[1] is True else f"[{key}]") + f" - {params[0]}" for key, params in
+                value=" ".join([(f"`<{key}>`" if params[1] is True else f"[{key}]") + f" - {params[0]}" for key, params in
                                 command.usage.items()])
             )
 
@@ -156,16 +157,17 @@ class Help(HelpCommand):
         """
 
         self.embed.title = f"Группа команд \"{group.name}\""
-        self.embed.description = f"{self.get_command_signature(group, args=True)} - " \
+        self.embed.description = f"`{self.get_command_signature(group, args=True)}` - " \
                                  f"{self.shorten_text(group.short_doc)}"
+        self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
 
         if group.all_commands:
             for _, cmd in group.all_commands.items():
-                command_doc = f"{self.get_command_signature(cmd, args=True)} - {self.shorten_text(cmd.short_doc)}"
+                command_doc = f"`{self.get_command_signature(cmd, args=True)}` - {self.shorten_text(cmd.short_doc)}"
 
                 if cmd.usage:
                     command_doc += "\n**Аргументы**\n"
-                    command_doc += " ".join([(f"<{key}>" if params[1] is True else f"[{key}]") + f" - {params[0]}"
+                    command_doc += " ".join([(f"`<{key}>" if params[1] is True else f"[{key}]") + f" - {params[0]}"
                                              for key, params in cmd.usage.items()])
 
                 self.embed.add_field(

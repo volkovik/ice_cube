@@ -14,6 +14,7 @@
 
 ## Требуемые модули
 - [discord.py](https://github.com/Rapptz/discord.py)
+- [SQLAlchemy](https://www.sqlalchemy.org/)
 
 ## Полезные ссылки
-- [Сервер Discord](https://discord.gg/w2C7E4b)
+- [Сервер Discord](https://discord.gg/atxwBRB)
