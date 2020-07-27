@@ -32,6 +32,8 @@ def get_user_settings(server, owner):
         server_id=str(server.id), owner_id=str(owner.id)
     ).first()
 
+    session.close()
+
     if settings_from_db is not None:
         settings = settings_from_db.__dict__
         settings["name"] = owner.display_name if settings["name"] is None else settings["name"]
@@ -97,6 +99,7 @@ def update_user_settings(server, owner, **settings):
     settings_from_db.name = settings["name"]
 
     session.commit()
+    session.close()
 
 
 def get_permissions_for_all_users(server, owner):
@@ -129,6 +132,7 @@ def get_permissions_for_all_users(server, owner):
             session.delete(user)
 
     session.commit()
+    session.close()
 
     return users
 
@@ -180,6 +184,7 @@ def update_permissions_for_all_users(server, owner, permissions):
         session.query(UserPermissionsOfRoom).filter_by(**db_kwargs, user_id=str(member.id)).first().permissions = perms
 
     session.commit()
+    session.close()
 
 
 def update_permissions_for_user(server, owner, user, permissions):
@@ -214,6 +219,7 @@ def update_permissions_for_user(server, owner, user, permissions):
     permissions_for_user.permissions = permissions
 
     session.commit()
+    session.close()
 
 
 def remove_permissions_for_user(server, owner, user):
@@ -239,6 +245,7 @@ def remove_permissions_for_user(server, owner, user):
         session.delete(permissions_for_user)
 
     session.commit()
+    session.close()
 
 
 def get_room_creator(server):
@@ -261,6 +268,8 @@ def get_room_creator(server):
     if channel is None:
         delete_room_creator(server)
 
+    session.close()
+
     return channel
 
 
@@ -281,6 +290,7 @@ def delete_room_creator(server):
         session.delete(channel_from_db)
 
     session.commit()
+    session.close()
 
 
 def check_room_settings(server, owner, channel, settings):
@@ -812,6 +822,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         await ctx.send(embed=message)
 
         session.commit()
+        session.close()
 
     @rooms_settings.command(cls=BotCommand, name="disable")
     @commands.has_permissions(administrator=True)
@@ -845,6 +856,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         await ctx.send(embed=message)
 
         session.commit()
+        session.close()
 
 
 def setup(bot):
