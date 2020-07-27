@@ -55,12 +55,14 @@ class Help(HelpCommand):
         :return: обработанная строка или та же строка, если строка меньше или равна лимиту символов
         """
 
-        text = text[0].lower() + text[1:]  # сделать первую букву маленькой
+        if text:
+            text = text[0].lower() + text[1:]  # сделать первую букву маленькой
 
+        # если описание превышает ограничение по символам, то сократить текст и поставить в конце троеточие
         if len(text) > self.width:
-            return text[0:self.width - 3] + '...'
-        else:
-            return text
+            text = text[0:self.width - 3] + '...'
+
+        return text
 
     def get_destination(self):
         """
@@ -167,7 +169,7 @@ class Help(HelpCommand):
 
                 if cmd.usage:
                     command_doc += "\n**Аргументы**\n"
-                    command_doc += " ".join([(f"`<{key}>" if params[1] is True else f"[{key}]") + f" - {params[0]}"
+                    command_doc += " ".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
                                              for key, params in cmd.usage.items()])
 
                 self.embed.add_field(
