@@ -47,6 +47,8 @@ class Information(commands.Cog, name="Информация"):
         user_from_db = session.query(User).filter_by(user_id=str(user.id)).first()
         bio = user_from_db.bio if user_from_db is not None else None
 
+        session.close()
+
         if bio is None:
             if user == ctx.author:
                 bio = "Вы можете вести свою информацию здесь с помощью команды `.bio`"
@@ -109,6 +111,7 @@ class Information(commands.Cog, name="Информация"):
         await ctx.send(embed=message)
 
         session.commit()
+        session.close()
 
     @commands.command(cls=BotCommand, name="server")
     async def server_information(self, ctx):

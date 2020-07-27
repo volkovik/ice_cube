@@ -67,6 +67,8 @@ def get_prefix(bot, message):
         if server_from_db is not None and server_from_db.prefix is not None:
             prefix = server_from_db.prefix
 
+        session.close()
+
     return commands.when_mentioned_or(prefix)(bot, message)
 
 
