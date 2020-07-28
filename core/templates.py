@@ -1,7 +1,14 @@
 import discord
+from enum import Enum
 from itertools import groupby
 from discord import Embed
 from discord.ext.commands import HelpCommand
+
+
+class PermissionsForRoom(Enum):
+    banned = False
+    default = None
+    allowed = True
 
 
 class ErrorMessage(Embed):
