@@ -351,6 +351,41 @@ class Information(commands.Cog, name="Информация"):
         session.commit()
         session.close()
 
+    @set_reputation_for_user.command(
+        cls=BotCommand, name="remove",
+        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
+    )
+    async def rate_down_user(self, ctx, user: commands.MemberConverter):
+        """
+        Удалить поставленную оценку у пользователя
+        """
+
+        if user == ctx.author:
+            raise CommandError("Вы не можете удалить оценку самому себе")
+        elif user.bot:
+            raise CommandError("Вы не можете удалить оценку у бота")
+
+        Session = sessionmaker(bind=ENGINE_DB)
+        session = Session()
+
+        db_kwargs = {
+            "user_id": str(ctx.author.id),
+            "rated_user_id": str(user.id)
+        }
+
+        score_from_db = session.query(UserScoreToAnotherUser).filter_by(**db_kwargs)
+
+        if score_from_db is None:
+            raise CommandError("Вы не ставили этому пользователю оценку")
+        else:
+            score_from_db.delete()
+            embed = SuccessfulMessage(f"Вы удалили оценку `{user.display_name}`")
+
+            await ctx.send(embed=embed)
+
+        session.commit()
+        session.close()
+
     @commands.command(cls=BotCommand, name="server")
     async def server_information(self, ctx):
         """
