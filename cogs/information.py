@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 from main import ENGINE_DB, __version__
 from core.database import User, UserScoreToAnotherUser
-from core.commands import BotCommand
+from core.commands import BotCommand, BotGroupCommands
 from core.templates import SuccessfulMessage, ErrorMessage
 from core.converts import convert_status, convert_activity_type, convert_voice_region, convert_verification_level
 
@@ -120,14 +120,17 @@ class Information(commands.Cog, name="Информация"):
         session.commit()
         session.close()
 
-    @commands.command(
-        cls=BotCommand, name="rate",
+    @commands.group(
+        cls=BotGroupCommands, name="rate", invoke_without_command=True,
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}
     )
     async def set_reputation_for_user(self, ctx, user: commands.MemberConverter):
         """
         Поставить оценку пользователю
         """
+
+        if user == ctx.author:
+            raise CommandError("Вы не можете дать оценку самому себе")
 
         timeout_message = ErrorMessage("Превышено время ожидания")
 
@@ -262,6 +265,44 @@ class Information(commands.Cog, name="Информация"):
                         await message.edit(embed=cancelled_message)
 
                     await message.clear_reactions()
+
+        session.commit()
+        session.close()
+
+    @set_reputation_for_user.command(
+        cls=BotCommand, name="up",
+        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}
+    )
+    async def rate_up_user(self, ctx, user: commands.MemberConverter):
+        """
+        Поставить положительную оценку пользователю или изменить на положительную
+        """
+
+        if user == ctx.author:
+            raise CommandError("Вы не можете дать оценку самому себе")
+
+        Session = sessionmaker(bind=ENGINE_DB)
+        session = Session()
+
+        db_kwargs = {
+            "user_id": str(ctx.author.id),
+            "rated_user_id": str(user.id)
+        }
+
+        score_from_db = session.query(UserScoreToAnotherUser).filter_by(**db_kwargs).first()
+
+        if score_from_db is None:
+            session.add(UserScoreToAnotherUser(**db_kwargs, score=True))
+            embed = SuccessfulMessage(f"Вы поставили положительную оценку `{user.display_name}`")
+        else:
+            if score_from_db.score is True:
+                session.close()
+                raise CommandError("Вы уже поставили положительную оценку пользователю")
+            else:
+                score_from_db.score = True
+                embed = SuccessfulMessage(f"Вы изменили вашу оценку на положительную `{user.display_name}`")
+
+        await ctx.send(embed=embed)
 
         session.commit()
         session.close()
