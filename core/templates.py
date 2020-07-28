@@ -137,14 +137,14 @@ class Help(HelpCommand):
 
         self.embed.title = f"Команда \"{command.name}\""
 
-        self.embed.description = f"{self.get_command_signature(command, args=True)} - " \
+        self.embed.description = f"`{self.get_command_signature(command, args=True)}` - " \
                                  f"{self.shorten_text(command.short_doc)}"
 
         if command.usage:
             self.embed.add_field(
                 name="Аргументы",
-                value=" ".join([(f"`<{key}>`" if params[1] is True else f"[{key}]") + f" - {params[0]}" for key, params in
-                                command.usage.items()])
+                value=" ".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
+                                for key, params in command.usage.items()])
             )
 
         self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
