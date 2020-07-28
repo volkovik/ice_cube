@@ -48,6 +48,11 @@ class Information(commands.Cog, name="Информация"):
         user_from_db = session.query(User).filter_by(user_id=str(user.id)).first()
         bio = user_from_db.bio if user_from_db is not None else None
 
+        up_score = session.query(UserScoreToAnotherUser).filter_by(rated_user_id=str(user.id), score=True).count()
+        down_score = session.query(UserScoreToAnotherUser).filter_by(rated_user_id=str(user.id), score=False).count()
+
+        user_score = up_score - down_score
+
         session.close()
 
         if bio is None:
@@ -64,6 +69,7 @@ class Information(commands.Cog, name="Информация"):
         message.add_field(
             name="Основная информация",
             value=f"**Никнейм:** {user.name}#{user.discriminator}\n"
+                  f"**Репутация:** {user_score}\n"
                   f"**Статус:** {status}\n{activity}"
                   f"**Дата регистрации:** {created_at}\n"
                   f"**Дата присоеденения:** {joined_at}",
