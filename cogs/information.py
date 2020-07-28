@@ -122,7 +122,7 @@ class Information(commands.Cog, name="Информация"):
 
     @commands.group(
         cls=BotGroupCommands, name="rate", invoke_without_command=True,
-        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}
+        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
     )
     async def set_reputation_for_user(self, ctx, user: commands.MemberConverter):
         """
@@ -131,6 +131,8 @@ class Information(commands.Cog, name="Информация"):
 
         if user == ctx.author:
             raise CommandError("Вы не можете дать оценку самому себе")
+        elif user.bot:
+            raise CommandError("Вы не можете оценить бота")
 
         timeout_message = ErrorMessage("Превышено время ожидания")
 
@@ -271,7 +273,7 @@ class Information(commands.Cog, name="Информация"):
 
     @set_reputation_for_user.command(
         cls=BotCommand, name="up",
-        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}
+        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
     )
     async def rate_up_user(self, ctx, user: commands.MemberConverter):
         """
@@ -280,6 +282,8 @@ class Information(commands.Cog, name="Информация"):
 
         if user == ctx.author:
             raise CommandError("Вы не можете дать оценку самому себе")
+        elif user.bot:
+            raise CommandError("Вы не можете оценить бота")
 
         Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
@@ -301,6 +305,46 @@ class Information(commands.Cog, name="Информация"):
             else:
                 score_from_db.score = True
                 embed = SuccessfulMessage(f"Вы изменили вашу оценку на положительную `{user.display_name}`")
+
+        await ctx.send(embed=embed)
+
+        session.commit()
+        session.close()
+
+    @set_reputation_for_user.command(
+        cls=BotCommand, name="down",
+        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
+    )
+    async def rate_down_user(self, ctx, user: commands.MemberConverter):
+        """
+        Поставить отрицательную оценку пользователю или изменить на отрицательную
+        """
+
+        if user == ctx.author:
+            raise CommandError("Вы не можете дать оценку самому себе")
+        elif user.bot:
+            raise CommandError("Вы не можете оценить бота")
+
+        Session = sessionmaker(bind=ENGINE_DB)
+        session = Session()
+
+        db_kwargs = {
+            "user_id": str(ctx.author.id),
+            "rated_user_id": str(user.id)
+        }
+
+        score_from_db = session.query(UserScoreToAnotherUser).filter_by(**db_kwargs).first()
+
+        if score_from_db is None:
+            session.add(UserScoreToAnotherUser(**db_kwargs, score=False))
+            embed = SuccessfulMessage(f"Вы поставили отрицательную оценку `{user.display_name}`")
+        else:
+            if score_from_db.score is False:
+                session.close()
+                raise CommandError("Вы уже поставили отрицательную оценку пользователю")
+            else:
+                score_from_db.score = False
+                embed = SuccessfulMessage(f"Вы изменили вашу оценку на отрицательную `{user.display_name}`")
 
         await ctx.send(embed=embed)
 
