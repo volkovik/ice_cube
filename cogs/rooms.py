@@ -809,6 +809,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
 
         if settings is not None:
+            session.close()
             raise CommandError("У вас уже есть приватные комнаты")
         else:
             message = SuccessfulMessage("Я успешно включил систему приватных комнат")
@@ -838,6 +839,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
 
         if settings is None:
+            session.close()
             raise CommandError("На вашем сервере не поставлены приватные комнаты")
         else:
             message = SuccessfulMessage("Я успешно выключил и удалил систему приватных комнат")
