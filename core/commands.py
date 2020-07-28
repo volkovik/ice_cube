@@ -82,18 +82,24 @@ class Settings(commands.Cog, name="Настройки"):
         Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
-        server_from_db = session.query(Server).filter_by(server_id=server.id).first()
+        db_kwargs = {
+            "server_id": str(server.id)
+        }
+
+        server_from_db = session.query(Server).filter_by(**db_kwargs).first()
 
         if server_from_db is None:
-            server_from_db = Server(server_id=server.id)
+            server_from_db = Server(**db_kwargs)
             session.add(server_from_db)
 
         last_prefix = server_from_db.prefix if server_from_db.prefix is not None else "."
 
         if prefix is not None:
             if len(prefix) > 32:
+                session.close()
                 raise CommandError("Я не могу поставить префикс, который больше 32 символов")
             elif prefix == last_prefix:
+                session.close()
                 raise CommandError("Вы уже используете данный префикс")
 
             if prefix == ".":
@@ -104,6 +110,7 @@ class Settings(commands.Cog, name="Настройки"):
                 message = SuccessfulMessage("Я успешно изменил префикс")
         else:
             if last_prefix == '.':
+                session.close()
                 raise CommandError("Вы не ввели префикс")
             else:
                 server_from_db.prefix = None
@@ -113,6 +120,7 @@ class Settings(commands.Cog, name="Настройки"):
         await ctx.send(embed=message)
 
         session.commit()
+        session.close()
 
 
 def setup(bot):
