@@ -355,7 +355,7 @@ class Information(commands.Cog, name="Информация"):
         cls=BotCommand, name="remove",
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
     )
-    async def rate_down_user(self, ctx, user: commands.MemberConverter):
+    async def remove_score_user(self, ctx, user: commands.MemberConverter):
         """
         Удалить поставленную оценку у пользователя
         """
