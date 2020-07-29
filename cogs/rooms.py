@@ -798,7 +798,33 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         Настройка приватных комнат на сервере
         """
 
-        await ctx.send_help(ctx.command.name)
+        server = ctx.guild
+
+        Session = sessionmaker(bind=ENGINE_DB)
+        session = Session()
+        settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
+
+        if settings is None:
+            embed = discord.Embed(
+                title="Приватные комнаты",
+                description=f"На данный момент на этом сервере нет приватных комнат. Чтобы их включить, используйте "
+                            f"команду `{ctx.prefix}room enable`"
+            )
+        else:
+            voice = server.get_channel(int(settings.channel_id_creates_rooms))
+            category = voice.category
+
+            embed = discord.Embed(
+                title="Приватные комнаты",
+                description=f"На данный момент на этом сервере установлена система приватных комнат. Чтобы их "
+                            f"выключить, используйте команду `{ctx.prefix}room disable`\n\n"
+                            f"**Будьте бдительны, когда выключаете систему! Удаляться все голосовые каналы в категории "
+                            f"`{category}` и сама категория!**"
+            )
+
+        await ctx.send(embed=embed)
+
+        session.close()
 
     @rooms_settings.command(cls=BotCommand, name="enable")
     @commands.has_permissions(administrator=True)
