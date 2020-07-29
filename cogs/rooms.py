@@ -809,7 +809,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             embed = discord.Embed(
                 title="Приватные комнаты",
                 description=f"На данный момент на этом сервере нет приватных комнат. Чтобы их включить, используйте "
-                            f"команду `{ctx.prefix}room enable`"
+                            f"команду `{ctx.prefix}setrooms enable`"
             )
         else:
             voice = server.get_channel(int(settings.channel_id_creates_rooms))
@@ -818,7 +818,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             embed = discord.Embed(
                 title="Приватные комнаты",
                 description=f"На данный момент на этом сервере установлена система приватных комнат. Чтобы их "
-                            f"выключить, используйте команду `{ctx.prefix}room disable`\n\n"
+                            f"выключить, используйте команду `{ctx.prefix}setrooms disable`\n\n"
                             f"**Будьте бдительны, когда выключаете систему! Удаляться все голосовые каналы в категории "
                             f"`{category}` и сама категория!**"
             )
