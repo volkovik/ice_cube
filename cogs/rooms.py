@@ -665,6 +665,31 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             await ctx.send(embed=message)
 
     @room_settings.command(
+        cls=BotCommand, name="kick",
+        usage={"пользователь": ("упоминание или ID участника сервера", True)}
+    )
+    async def kick_member_from_room(self, ctx, user: commands.MemberConverter = None):
+        """
+        Кикнуть пользователя из вашей комнаты
+        """
+
+        author = ctx.author
+
+        if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+            if user is None:
+                raise CommandError("Вы не ввели пользователя")
+
+            members = author.voice.channel.members
+
+            if user not in members:
+                raise CommandError("В вашей комнате нет такого пользователя")
+            else:
+                await user.move_to(None)
+                await ctx.send(embed=SuccessfulMessage(f"Я кикнул `{user.display_name}` из вашей комнаты"))
+        else:
+            raise CommandError("Вы не находитесь в своей комнате")
+
+    @room_settings.command(
         cls=BotCommand, name="allow",
         usage={"пользователь": ("упоминание или ID участника сервера", True)}
     )
