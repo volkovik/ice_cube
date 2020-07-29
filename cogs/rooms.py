@@ -1,4 +1,5 @@
 import discord
+import asyncio
 from discord.ext import commands
 from discord import PermissionOverwrite as Permissions
 from discord.ext.commands import CommandError
@@ -7,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from main import ENGINE_DB
 from core.database import ServerSettingsOfRooms, UserSettingsOfRoom, UserPermissionsOfRoom, PermissionsForRoom
 from core.commands import BotCommand
-from core.templates import SuccessfulMessage
+from core.templates import SuccessfulMessage, ErrorMessage
 
 # Настройки войса для пользователя, которым им владеет
 OWNER_PERMISSIONS = Permissions(manage_channels=True, connect=True, speak=True)
@@ -873,20 +874,60 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             session.close()
             raise CommandError("На вашем сервере не поставлены приватные комнаты")
         else:
-            message = SuccessfulMessage("Я успешно выключил и удалил систему приватных комнат")
+            emojis = {
+                "accept": "✅",
+                "cancel": "🚫"
+            }
 
             voice = server.get_channel(int(settings.channel_id_creates_rooms))
             category = voice.category
 
-            if len(category.voice_channels) != 0:
-                for channel in category.voice_channels:
-                    await channel.delete()
+            embed = discord.Embed(
+                title="Выключение приватных комнат",
+                description=f"Вы уверены, что хотите выключить систему приватных комнат?\n"
+                            f"**Это повлечёт удалению всех голосовых каналов в категории `{category}` и самой "
+                            f"категории!**\n\n"
+                            f"{emojis['accept']} - Да, выключить\n"
+                            f"{emojis['cancel']} - Нет, отменить выключение"
+            )
 
-            await category.delete()
+            message = await ctx.send(embed=embed)
 
-            session.delete(settings)
+            await message.add_reaction(emojis["accept"])
+            await message.add_reaction(emojis["cancel"])
 
-        await ctx.send(embed=message)
+            def check(reaction, user):
+                return ctx.author == user and str(reaction) in emojis.values()
+
+            try:
+                reaction, _ = await self.client.wait_for('reaction_add', timeout=60.0, check=check)
+            except asyncio.TimeoutError:
+                session.close()
+                await message.edit(embed=ErrorMessage("Превышено время ожидания"))
+                await message.clear_reactions()
+            else:
+                if str(reaction) == emojis["accept"]:
+                    embed = SuccessfulMessage("Я успешно выключил и удалил систему приватных комнат")
+
+                    voice = server.get_channel(int(settings.channel_id_creates_rooms))
+                    category = voice.category
+
+                    if len(category.voice_channels) != 0:
+                        for channel in category.voice_channels:
+                            await channel.delete()
+
+                    await category.delete()
+
+                    session.delete(settings)
+                else:
+                    embed=discord.Embed(
+                        title=":x: Отменено",
+                        description="Вы отменили удаление приватных комнат на этом сервере",
+                        color=0xDD2E44
+                    )
+
+                await message.edit(embed=embed)
+                await message.clear_reactions()
 
         session.commit()
         session.close()
