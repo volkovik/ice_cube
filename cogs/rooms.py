@@ -902,7 +902,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             try:
                 reaction, _ = await self.client.wait_for('reaction_add', timeout=60.0, check=check)
             except asyncio.TimeoutError:
-                session.close()
                 await message.edit(embed=ErrorMessage("Превышено время ожидания"))
                 await message.clear_reactions()
             else:
