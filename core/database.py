@@ -1,15 +1,9 @@
-import enum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, String, Integer, Boolean, Enum
 
+from core.templates import PermissionsForRoom
 
 Base = declarative_base()
-
-
-class PermissionsForRoom(enum.Enum):
-    banned = False
-    default = None
-    allowed = True
 
 
 class User(Base):
@@ -51,3 +45,11 @@ class UserPermissionsOfRoom(Base):
     owner_id = Column(String(32), primary_key=True)
     user_id = Column(String(32), primary_key=True)
     permissions = Column(Enum(PermissionsForRoom), default=PermissionsForRoom.default, nullable=False)
+
+
+class UserScoreToAnotherUser(Base):
+    __tablename__ = "users_score_to_another_users"
+
+    user_id = Column(String(32), primary_key=True)
+    rated_user_id = Column(String(32), primary_key=True)
+    score = Column(Boolean, nullable=False)

@@ -1,7 +1,14 @@
 import discord
+from enum import Enum
 from itertools import groupby
 from discord import Embed
 from discord.ext.commands import HelpCommand
+
+
+class PermissionsForRoom(Enum):
+    banned = False
+    default = None
+    allowed = True
 
 
 class ErrorMessage(Embed):
@@ -55,12 +62,14 @@ class Help(HelpCommand):
         :return: обработанная строка или та же строка, если строка меньше или равна лимиту символов
         """
 
-        text = text[0].lower() + text[1:]  # сделать первую букву маленькой
+        if text:
+            text = text[0].lower() + text[1:]  # сделать первую букву маленькой
 
+        # если описание превышает ограничение по символам, то сократить текст и поставить в конце троеточие
         if len(text) > self.width:
-            return text[0:self.width - 3] + '...'
-        else:
-            return text
+            text = text[0:self.width - 3] + '...'
+
+        return text
 
     def get_destination(self):
         """
@@ -135,17 +144,16 @@ class Help(HelpCommand):
 
         self.embed.title = f"Команда \"{command.name}\""
 
-        self.embed.description = f"{self.get_command_signature(command, args=True)} - " \
+        self.embed.description = f"`{self.get_command_signature(command, args=True)}` - " \
                                  f"{self.shorten_text(command.short_doc)}"
 
         if command.usage:
+            self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
             self.embed.add_field(
                 name="Аргументы",
-                value=" ".join([(f"`<{key}>`" if params[1] is True else f"[{key}]") + f" - {params[0]}" for key, params in
-                                command.usage.items()])
+                value=" ".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
+                                for key, params in command.usage.items()])
             )
-
-        self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
 
         await self.context.send(embed=self.embed)
 
@@ -156,25 +164,30 @@ class Help(HelpCommand):
         :param group: группа команд
         """
 
-        self.embed.title = f"Группа команд \"{group.name}\""
+        self.embed.title = f"Команда \"{group.name}\""
         self.embed.description = f"`{self.get_command_signature(group, args=True)}` - " \
                                  f"{self.shorten_text(group.short_doc)}"
-        self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
+
+        if group.usage:
+            self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
+            self.embed.add_field(
+                name="Аргументы",
+                value=" ".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
+                                for key, params in group.usage.items()])
+            )
 
         if group.all_commands:
-            for _, cmd in group.all_commands.items():
-                command_doc = f"`{self.get_command_signature(cmd, args=True)}` - {self.shorten_text(cmd.short_doc)}"
+            commands = []
 
-                if cmd.usage:
-                    command_doc += "\n**Аргументы**\n"
-                    command_doc += " ".join([(f"`<{key}>" if params[1] is True else f"[{key}]") + f" - {params[0]}"
-                                             for key, params in cmd.usage.items()])
+            for cmd in group.all_commands.values():
+                commands.append(f"`{self.get_command_signature(cmd, args=False)}` - "
+                                f"{self.shorten_text(cmd.short_doc)}")
 
-                self.embed.add_field(
-                    name=f"Команда \"{cmd.name}\"",
-                    value=command_doc,
-                    inline=False
-                )
+            self.embed.add_field(
+                name=f"Дополнительные команды",
+                value="\n".join(commands),
+                inline=False
+            )
 
         await self.context.send(embed=self.embed)
 

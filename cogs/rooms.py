@@ -1,4 +1,5 @@
 import discord
+import asyncio
 from discord.ext import commands
 from discord import PermissionOverwrite as Permissions
 from discord.ext.commands import CommandError
@@ -7,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from main import ENGINE_DB
 from core.database import ServerSettingsOfRooms, UserSettingsOfRoom, UserPermissionsOfRoom, PermissionsForRoom
 from core.commands import BotCommand
-from core.templates import SuccessfulMessage
+from core.templates import SuccessfulMessage, ErrorMessage
 
 # Настройки войса для пользователя, которым им владеет
 OWNER_PERMISSIONS = Permissions(manage_channels=True, connect=True, speak=True)
@@ -31,6 +32,8 @@ def get_user_settings(server, owner):
     settings_from_db = session.query(UserSettingsOfRoom).filter_by(
         server_id=str(server.id), owner_id=str(owner.id)
     ).first()
+
+    session.close()
 
     if settings_from_db is not None:
         settings = settings_from_db.__dict__
@@ -97,6 +100,7 @@ def update_user_settings(server, owner, **settings):
     settings_from_db.name = settings["name"]
 
     session.commit()
+    session.close()
 
 
 def get_permissions_for_all_users(server, owner):
@@ -129,6 +133,7 @@ def get_permissions_for_all_users(server, owner):
             session.delete(user)
 
     session.commit()
+    session.close()
 
     return users
 
@@ -180,6 +185,7 @@ def update_permissions_for_all_users(server, owner, permissions):
         session.query(UserPermissionsOfRoom).filter_by(**db_kwargs, user_id=str(member.id)).first().permissions = perms
 
     session.commit()
+    session.close()
 
 
 def update_permissions_for_user(server, owner, user, permissions):
@@ -214,6 +220,7 @@ def update_permissions_for_user(server, owner, user, permissions):
     permissions_for_user.permissions = permissions
 
     session.commit()
+    session.close()
 
 
 def remove_permissions_for_user(server, owner, user):
@@ -239,6 +246,7 @@ def remove_permissions_for_user(server, owner, user):
         session.delete(permissions_for_user)
 
     session.commit()
+    session.close()
 
 
 def get_room_creator(server):
@@ -261,6 +269,8 @@ def get_room_creator(server):
     if channel is None:
         delete_room_creator(server)
 
+    session.close()
+
     return channel
 
 
@@ -281,6 +291,7 @@ def delete_room_creator(server):
         session.delete(channel_from_db)
 
     session.commit()
+    session.close()
 
 
 def check_room_settings(server, owner, channel, settings):
@@ -347,19 +358,8 @@ def check_rooms_system(ctx):
     if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
         # Проверяет настройки войса с настройками из базы данных
         check_room_settings(server, author, author.voice.channel, settings)
-    elif settings is None:
-        raise CommandError(f"Ранее, вы не использовали комнаты на этом сервере. Чтобы использовать эту команду, "
-                           f"создайте комнату с помощью голосового канала `{creator.name}`")
 
     return True
-
-
-def rooms_system():
-    """
-    Декоратор для команд
-    """
-
-    return commands.check(check_rooms_system)
 
 
 class Rooms(commands.Cog, name="Приватные комнаты"):
@@ -461,24 +461,24 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         check_room_settings(after.guild, author, after, settings)
 
     @commands.group(name="room")
-    @rooms_system()
+    @commands.check(check_rooms_system)
     async def room_settings(self, ctx):
         """
         Настройка вашей приватной комнаты
         """
 
+        author = ctx.author
+        server = ctx.guild
+
+        settings = get_user_settings(server, author)
+        creator = get_room_creator(server)
+
+        if settings is None:
+            raise CommandError(f"Вы не ещё не использовали приватные комнаты на этом сервере. Зайдите в голосовой "
+                               f"канал `{creator}`, чтобы создать комнату")
+
         # Если команда была использована без сабкоманды, то отправить информацию о комнате
         if ctx.invoked_subcommand is None:
-            author = ctx.author
-            server = ctx.guild
-
-            settings = get_user_settings(server, author)
-            creator = get_room_creator(server)
-
-            if settings is None:
-                raise CommandError(f"Вы не ещё не использовали приватные комнаты на этом сервере. Зайдите в голосовой "
-                                   f"канал `{creator}`, чтобы создать комнату")
-
             name = settings["name"]
             user_limit = settings["user_limit"]
             bitrate = settings["bitrate"]
@@ -516,7 +516,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             await ctx.send(embed=message)
 
     @room_settings.command(cls=BotCommand, name="lock")
-    @rooms_system()
     async def lock_room(self, ctx):
         """
         Закрыть комнату от посторонних участников
@@ -538,7 +537,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             await ctx.send(embed=SuccessfulMessage("Я закрыл вашу комнату"))
 
     @room_settings.command(cls=BotCommand, name="unlock")
-    @rooms_system()
     async def unlock_room(self, ctx):
         """
         Открыть комнату для посторонних участников
@@ -564,7 +562,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         usage={"лимит": ("максимальное количество участников, которое может подключиться к комнате (если оставить "
                          "пустым, лимит сбросится)", True)}
     )
-    @rooms_system()
     async def room_users_limit(self, ctx, limit: int = 0):
         """
         Поставить лимит пользователей в вашей комнате
@@ -601,7 +598,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         usage={"название": ("новое название комнаты (если оставить пустым, то название комнаты изменится на ваш ник)",
                             True)}
     )
-    @rooms_system()
     async def rename_room(self, ctx, *, name=None):
         """
         Измененить название команты
@@ -637,7 +633,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         usage={"битрейт": ("кбит/с, чем больше, тем лучше качество звука (если оставить пустым, битрейт будет 64)",
                            True)}
     )
-    @rooms_system()
     async def change_room_bitrate(self, ctx, bitrate: int = 64):
         """
         Изменить битрейт (качество звука) комнаты
@@ -671,10 +666,34 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             await ctx.send(embed=message)
 
     @room_settings.command(
+        cls=BotCommand, name="kick",
+        usage={"пользователь": ("упоминание или ID участника сервера", True)}
+    )
+    async def kick_member_from_room(self, ctx, user: commands.MemberConverter = None):
+        """
+        Кикнуть пользователя из вашей комнаты
+        """
+
+        author = ctx.author
+
+        if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+            if user is None:
+                raise CommandError("Вы не ввели пользователя")
+
+            members = author.voice.channel.members
+
+            if user not in members:
+                raise CommandError("В вашей комнате нет такого пользователя")
+            else:
+                await user.move_to(None)
+                await ctx.send(embed=SuccessfulMessage(f"Я кикнул `{user.display_name}` из вашей комнаты"))
+        else:
+            raise CommandError("Вы не находитесь в своей комнате")
+
+    @room_settings.command(
         cls=BotCommand, name="allow",
         usage={"пользователь": ("упоминание или ID участника сервера", True)}
     )
-    @rooms_system()
     async def allow_member_to_join_room(self, ctx, user: commands.MemberConverter):
         """
         Дать доступ пользователю заходить в комнату
@@ -699,7 +718,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         cls=BotCommand, name="ban",
         usage={"пользователь": ("упоминание или ID участника сервера", True)}
     )
-    @rooms_system()
     async def ban_member_from_room(self, ctx, user: commands.MemberConverter):
         """
         Заблокировать доступ пользователю заходить в комнату
@@ -724,7 +742,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         cls=BotCommand, name="remove",
         usage={"пользователь": ("упоминание или ID участника сервера", True)}
     )
-    @rooms_system()
     async def set_default_permissions_for_member(self, ctx, user: commands.MemberConverter):
         """
         Поставить доступ к каналу у пользователя по умолчанию
@@ -745,7 +762,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             await ctx.send(embed=SuccessfulMessage(f"Я сбросил права доступа у `{user.display_name}` к вашей комнате"))
 
     @room_settings.command(name="reset")
-    @rooms_system()
     async def reset_room_settings(self, ctx):
         """
         Сбросить все настройки комнаты
@@ -783,7 +799,33 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         Настройка приватных комнат на сервере
         """
 
-        await ctx.send_help(ctx.command.name)
+        server = ctx.guild
+
+        Session = sessionmaker(bind=ENGINE_DB)
+        session = Session()
+        settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
+
+        if settings is None:
+            embed = discord.Embed(
+                title="Приватные комнаты",
+                description=f"На данный момент на этом сервере нет приватных комнат. Чтобы их включить, используйте "
+                            f"команду `{ctx.prefix}setrooms enable`"
+            )
+        else:
+            voice = server.get_channel(int(settings.channel_id_creates_rooms))
+            category = voice.category
+
+            embed = discord.Embed(
+                title="Приватные комнаты",
+                description=f"На данный момент на этом сервере установлена система приватных комнат. Чтобы их "
+                            f"выключить, используйте команду `{ctx.prefix}setrooms disable`\n\n"
+                            f"**Будьте бдительны, когда выключаете систему! Удаляться все голосовые каналы в категории "
+                            f"`{category}` и сама категория!**"
+            )
+
+        await ctx.send(embed=embed)
+
+        session.close()
 
     @rooms_settings.command(cls=BotCommand, name="enable")
     @commands.has_permissions(administrator=True)
@@ -799,6 +841,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
 
         if settings is not None:
+            session.close()
             raise CommandError("У вас уже есть приватные комнаты")
         else:
             message = SuccessfulMessage("Я успешно включил систему приватных комнат")
@@ -812,6 +855,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         await ctx.send(embed=message)
 
         session.commit()
+        session.close()
 
     @rooms_settings.command(cls=BotCommand, name="disable")
     @commands.has_permissions(administrator=True)
@@ -827,24 +871,65 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
 
         if settings is None:
+            session.close()
             raise CommandError("На вашем сервере не поставлены приватные комнаты")
         else:
-            message = SuccessfulMessage("Я успешно выключил и удалил систему приватных комнат")
+            emojis = {
+                "accept": "✅",
+                "cancel": "🚫"
+            }
 
             voice = server.get_channel(int(settings.channel_id_creates_rooms))
             category = voice.category
 
-            if len(category.voice_channels) != 0:
-                for channel in category.voice_channels:
-                    await channel.delete()
+            embed = discord.Embed(
+                title="Выключение приватных комнат",
+                description=f"Вы уверены, что хотите выключить систему приватных комнат?\n"
+                            f"**Это повлечёт удалению всех голосовых каналов в категории `{category}` и самой "
+                            f"категории!**\n\n"
+                            f"{emojis['accept']} - Да, выключить\n"
+                            f"{emojis['cancel']} - Нет, отменить выключение"
+            )
 
-            await category.delete()
+            message = await ctx.send(embed=embed)
 
-            session.delete(settings)
+            await message.add_reaction(emojis["accept"])
+            await message.add_reaction(emojis["cancel"])
 
-        await ctx.send(embed=message)
+            def check(reaction, user):
+                return ctx.author == user and str(reaction) in emojis.values()
+
+            try:
+                reaction, _ = await self.client.wait_for('reaction_add', timeout=60.0, check=check)
+            except asyncio.TimeoutError:
+                await message.edit(embed=ErrorMessage("Превышено время ожидания"))
+                await message.clear_reactions()
+            else:
+                if str(reaction) == emojis["accept"]:
+                    embed = SuccessfulMessage("Я успешно выключил и удалил систему приватных комнат")
+
+                    voice = server.get_channel(int(settings.channel_id_creates_rooms))
+                    category = voice.category
+
+                    if len(category.voice_channels) != 0:
+                        for channel in category.voice_channels:
+                            await channel.delete()
+
+                    await category.delete()
+
+                    session.delete(settings)
+                else:
+                    embed=discord.Embed(
+                        title=":x: Отменено",
+                        description="Вы отменили удаление приватных комнат на этом сервере",
+                        color=0xDD2E44
+                    )
+
+                await message.edit(embed=embed)
+                await message.clear_reactions()
 
         session.commit()
+        session.close()
 
 
 def setup(bot):
