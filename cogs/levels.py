@@ -1,11 +1,12 @@
 import discord
-import mysql.connector
 from discord.ext import commands
 from discord.ext.commands import CommandError
+from sqlalchemy.orm import sessionmaker
 
-from main import CONFIG
+from main import ENGINE_DB
 from core.commands import BotCommand
 from core.templates import SuccessfulMessage
+from core.database import UserLevel, ServerSettingsOfLevels
 
 
 def get_user_experience(server, user):
@@ -20,20 +21,19 @@ def get_user_experience(server, user):
     :rtype: int
     """
 
-    db = mysql.connector.connect(**CONFIG["database"])
-    cursor = db.cursor()
+    Session = sessionmaker(bind=ENGINE_DB)
+    session = Session()
 
-    cursor.execute(
-        "SELECT experience FROM levels "
-        "WHERE server_id=%s AND user_id=%s",
-        (server.id, user.id)
-    )
-    result = cursor.fetchone()
+    user_experience = session.query(UserLevel).filter_by(server_id=str(server.id), user_id=str(user.id)).first()
 
-    db.close()
-    cursor.close()
+    if user_experience is None:
+        experience = 0
+    else:
+        experience = user_experience.experience
 
-    return result[0] if result is not None else 0
+    session.close()
+
+    return experience
 
 
 def update_user_experience(server, user, exp):
@@ -48,56 +48,59 @@ def update_user_experience(server, user, exp):
     :type exp: int
     """
 
-    db = mysql.connector.connect(**CONFIG["database"])
-    db.autocommit = True
-    cursor = db.cursor()
+    Session = sessionmaker(bind=ENGINE_DB)
+    session = Session()
 
-    sql_format = {
-        "server": server.id,
-        "user": user.id,
-        "exp": exp
+    db_kwargs = {
+        "server_id": str(server.id),
+        "user_id": str(user.id)
     }
 
-    cursor.execute(
-        "INSERT INTO levels(server_id, user_id, experience) "
-        "VALUES(%(server)s, %(user)s, %(exp)s) "
-        "ON DUPLICATE KEY UPDATE experience=experience + %(exp)s",
-        sql_format
-    )
+    user_experience = session.query(UserLevel).filter_by(**db_kwargs).first()
 
-    db.close()
-    cursor.close()
+    if user_experience is None:
+        session.add(UserLevel(**db_kwargs, experience=exp))
+    else:
+        user_experience.experience = user_experience.experience + exp
+
+    session.commit()
+    session.close()
 
 
-def predicate_check_level_system(ctx):
+def level_system_is_on(server):
     """
     Проверка, включёна ли система уровней на сервере
 
-    :param ctx: сообщение или context
-    :type ctx: commands.Context or discord.Message
+    :param server: сервер Discord
+    :type server: discord.Guild
     :return: True, если включена, иначе False
     :rtype: bool
     """
 
-    db = mysql.connector.connect(**CONFIG["database"])
-    cursor = db.cursor()
+    Session = sessionmaker(bind=ENGINE_DB)
+    session = Session()
 
-    cursor.execute(
-        "SELECT level_system FROM servers "
-        "WHERE id=%s",
-        (ctx.guild.id, )
-    )
-    result = cursor.fetchone()
+    server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(server.id)).first()
 
-    return result[0] if result is not None else False
+    if server_settings is None:
+        is_on = False
+    else:
+        is_on = True
+
+    session.close()
+
+    return is_on
 
 
-def level_system_is_on():
+def check_level_system_is_on():
     """
     Декоратор для discord.Command, с проверкой, включена ли система уровней на сервере
     """
 
-    return commands.check(predicate_check_level_system)
+    def predicate(ctx):
+        return level_system_is_on(ctx.guild)
+
+    return commands.check(predicate)
 
 
 class Level(commands.Cog, name="Уровни"):
@@ -108,7 +111,7 @@ class Level(commands.Cog, name="Уровни"):
     async def when_message(self, message):
         author = message.author
 
-        if not author.bot and predicate_check_level_system(message):
+        if not author.bot and level_system_is_on(message.guild):
             server = message.guild
 
             user_exp = get_user_experience(server, author)
@@ -122,7 +125,7 @@ class Level(commands.Cog, name="Уровни"):
         cls=BotCommand, name="rank",
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}
     )
-    @level_system_is_on()
+    @check_level_system_is_on()
     async def get_current_level(self, ctx, user: commands.MemberConverter = None):
         """
         Показывает уровень пользователя
@@ -164,39 +167,27 @@ class Level(commands.Cog, name="Уровни"):
 
         server = ctx.guild
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
+        Session = sessionmaker(bind=ENGINE_DB)
+        session = Session()
 
-        data_sql = {"server": server.id}
+        db_kwargs = {
+            "server_id": str(server.id)
+        }
 
-        cursor.execute(
-            "SELECT level_system FROM servers "
-            "WHERE id=%(server)s",
-            data_sql
-        )
-        result = cursor.fetchone()
-        is_on = result[0] if result is not None else False
+        server_settings = session.query(ServerSettingsOfLevels).filter_by(**db_kwargs).first()
 
-        if is_on:
-            cursor.close()
-            db.close()
-
-            raise CommandError("На вашем сервере уже вылючена система уровней")
+        if server_settings is not None:
+            session.close()
+            raise CommandError("На вашем сервере уже включена система уровней")
         else:
-            message = SuccessfulMessage("Я успешно включил систему уровней")
+            session.add(ServerSettingsOfLevels(**db_kwargs))
 
-            cursor.execute(
-                "INSERT INTO servers(id, level_system) "
-                "VALUES (%(server)s, 1) "
-                "ON DUPLICATE KEY UPDATE level_system=1",
-                data_sql
-            )
+            message = SuccessfulMessage("Я включил систему уровней на вашем сервере")
 
-            cursor.close()
-            db.close()
+            session.commit()
+            session.close()
 
-        await ctx.send(embed=message)
+            await ctx.send(embed=message)
 
     @rooms_settings.command(cls=BotCommand, name="disable")
     @commands.has_permissions(administrator=True)
@@ -207,38 +198,27 @@ class Level(commands.Cog, name="Уровни"):
 
         server = ctx.guild
 
-        db = mysql.connector.connect(**CONFIG["database"])
-        db.autocommit = True
-        cursor = db.cursor()
+        Session = sessionmaker(bind=ENGINE_DB)
+        session = Session()
 
-        data_sql = {"server": server.id}
+        db_kwargs = {
+            "server_id": str(server.id)
+        }
 
-        cursor.execute(
-            "SELECT level_system FROM servers "
-            "WHERE id=%(server)s",
-            data_sql
-        )
-        result = cursor.fetchone()
-        is_on = result[0] if result is not None else False
+        server_settings = session.query(ServerSettingsOfLevels).filter_by(**db_kwargs).first()
 
-        if not is_on:
-            cursor.close()
-            db.close()
-
-            raise CommandError("На вашем сервере уже выключена система уровней")
+        if server_settings is None:
+            session.close()
+            raise CommandError("На вашем сервере нет системы уровней")
         else:
-            message = SuccessfulMessage("Я успешно выключил систему уровней")
+            session.delete(server_settings)
 
-            cursor.execute(
-                "UPDATE IGNORE servers SET level_system=0 "
-                "WHERE id=%(server)s",
-                data_sql
-            )
+            message = SuccessfulMessage("Я выключил систему уровней на вашем сервере")
 
-            cursor.close()
-            db.close()
+            session.commit()
+            session.close()
 
-        await ctx.send(embed=message)
+            await ctx.send(embed=message)
 
 
 def setup(bot):
