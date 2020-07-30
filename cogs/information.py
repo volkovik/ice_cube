@@ -467,8 +467,7 @@ class Information(commands.Cog, name="Информация"):
         )
         message.add_field(
             name="Полезные ссылки",
-            value="[Discord сервер](https://discord.gg/atxwBRB)\n"
-                  "[GitHub репозиторий](https://github.com/volkovik/ice_cube)"
+            value="[Discord сервер](https://discord.gg/atxwBRB)"
         )
         message.add_field(
             name="Версия бота",
