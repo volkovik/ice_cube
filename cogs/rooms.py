@@ -454,11 +454,13 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         server = after.guild
         # Владелец комнаты
-        author = [m for m, p in before.overwrites.items() if p == OWNER_PERMISSIONS][0]
-        settings = get_user_settings(server, author)
+        author = [m for m, p in before.overwrites.items() if p == OWNER_PERMISSIONS]
+        if len(author) != 0:
+            author = author[0]
+            settings = get_user_settings(server, author)
 
-        # Проверяет настройки войса с настройками из базы данных
-        check_room_settings(after.guild, author, after, settings)
+            # Проверяет настройки войса с настройками из базы данных
+            check_room_settings(after.guild, author, after, settings)
 
     @commands.group(name="room")
     @commands.check(check_rooms_system)
@@ -531,7 +533,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         else:
             update_user_settings(server, author, is_locked=True)
 
-            if author.voice is not None or author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
                 await author.voice.channel.set_permissions(everyone, overwrite=Permissions(connect=False))
 
             await ctx.send(embed=SuccessfulMessage("Я закрыл вашу комнату"))
