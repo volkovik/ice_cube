@@ -11,7 +11,7 @@ from core.database import Base, Server
 
 __version__ = "0.2.3b"
 
-# Константы
+# Основные константы
 DEV_MODE = True if os.environ.get("DEV_MODE") == "True" else False
 DEFAULT_PREFIX = "." if not DEV_MODE else ">"
 
@@ -75,7 +75,6 @@ def get_prefix(bot, message):
 # Настройка бота
 client = commands.Bot(command_prefix=get_prefix)
 client.help_command = Help()
-client.load_extension("core.commands")
 
 cogs_path = "cogs/"  # Директория, где расположены модули
 for name_of_file in [f for f in os.listdir("cogs") if os.path.isfile(os.path.join("cogs", f))]:
