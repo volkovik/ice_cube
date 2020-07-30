@@ -1,6 +1,8 @@
 import discord
+import datetime
 from discord.ext import commands
 from discord.ext.commands import CommandError
+from discord.ext.commands import CooldownMapping, Cooldown
 from sqlalchemy.orm import sessionmaker
 
 from main import ENGINE_DB
@@ -106,20 +108,28 @@ def check_level_system_is_on():
 class Level(commands.Cog, name="Уровни"):
     def __init__(self, bot):
         self.client = bot
+        self._buckets = CooldownMapping(Cooldown(1, 60, commands.BucketType.member))
 
     @commands.Cog.listener(name="on_message")
     async def when_message(self, message):
         author = message.author
+        server = message.guild
 
-        if not author.bot and level_system_is_on(message.guild):
-            server = message.guild
+        if not author.bot and level_system_is_on(server):
+            if self._buckets.valid:
+                current = message.created_at.replace(tzinfo=datetime.timezone.utc).timestamp()
+                bucket = self._buckets.get_bucket(message, current)
+                retry_after = bucket.update_rate_limit(current)
 
-            user_exp = get_user_experience(server, author)
+                if retry_after:
+                    return
 
-            update_user_experience(server, author, 25)
+                user_exp = get_user_experience(server, author)
 
-            if user_exp % 500 > (user_exp + 25) % 500:
-                await message.channel.send(f"{author.mention} получил `{(user_exp + 25) // 500} уровень`")
+                update_user_experience(server, author, 25)
+
+                if user_exp % 500 > (user_exp + 25) % 500:
+                    await message.channel.send(f"{author.mention} получил `{(user_exp + 25) // 500} уровень`")
 
     @commands.command(
         cls=BotCommand, name="rank",
