@@ -1,5 +1,6 @@
 import discord
 import datetime
+import asyncio
 from discord.ext import commands
 from discord.ext.commands import CommandError
 from discord.ext.commands import CooldownMapping, Cooldown
@@ -7,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from main import ENGINE_DB
 from core.commands import BotCommand
-from core.templates import SuccessfulMessage
+from core.templates import SuccessfulMessage, ErrorMessage
 from core.database import UserLevel, ServerSettingsOfLevels
 
 
@@ -161,14 +162,31 @@ class Level(commands.Cog, name="Уровни"):
 
     @commands.group(name="setlevels", invoke_without_command=True)
     @commands.has_permissions(administrator=True)
-    async def rooms_settings(self, ctx):
+    async def levels_settings(self, ctx):
         """
         Настройка системы уровней на сервере
         """
 
-        await ctx.send_help(ctx.command.name)
+        server = ctx.guild
 
-    @rooms_settings.command(cls=BotCommand, name="enable")
+        if level_system_is_on(server):
+            embed = discord.Embed(
+                title="Система уровней",
+                description=f"На данный момент на этом сервере нет системы уровней. Чтобы их включить, используйте "
+                            f"команду `{ctx.prefix}setlevels enable`"
+            )
+        else:
+            embed = discord.Embed(
+                title="Приватные комнаты",
+                description=f"На данный момент на этом сервере установлена система уровней. Чтобы их "
+                            f"выключить, используйте команду `{ctx.prefix}setlevels disable`\n\n"
+                            f"**Будьте бдительны, когда выключаете систему! Удалятся все настройки и сбросится опыт у "
+                            f"каждого участника сервера!**"
+            )
+
+        await ctx.send(embed=embed)
+
+    @levels_settings.command(cls=BotCommand, name="enable")
     @commands.has_permissions(administrator=True)
     async def enable_level_system(self, ctx):
         """
@@ -199,7 +217,7 @@ class Level(commands.Cog, name="Уровни"):
 
             await ctx.send(embed=message)
 
-    @rooms_settings.command(cls=BotCommand, name="disable")
+    @levels_settings.command(cls=BotCommand, name="disable")
     @commands.has_permissions(administrator=True)
     async def disable_level_system(self, ctx):
         """
@@ -221,14 +239,51 @@ class Level(commands.Cog, name="Уровни"):
             session.close()
             raise CommandError("На вашем сервере нет системы уровней")
         else:
-            session.delete(server_settings)
+            emojis = {
+                "accept": "✅",
+                "cancel": "🚫"
+            }
 
-            message = SuccessfulMessage("Я выключил систему уровней на вашем сервере")
+            embed = discord.Embed(
+                title="Выключение системы уровней",
+                description=f"Вы уверены, что хотите выключить систему уровней?\n"
+                            f"**Это повлечёт удалению всех настроек, а также к сбросу опыта у каждого участника "
+                            f"сервера!**\n\n"
+                            f"{emojis['accept']} - Да, выключить\n"
+                            f"{emojis['cancel']} - Нет, отменить выключение"
+            )
 
-            session.commit()
+            message = await ctx.send(embed=embed)
+
+            await message.add_reaction(emojis["accept"])
+            await message.add_reaction(emojis["cancel"])
+
+            def check(reaction, user):
+                return ctx.author == user and str(reaction) in emojis.values()
+
+            try:
+                reaction, _ = await self.client.wait_for('reaction_add', timeout=60.0, check=check)
+            except asyncio.TimeoutError:
+                await message.edit(embed=ErrorMessage("Превышено время ожидания"))
+                await message.clear_reactions()
+            else:
+                if str(reaction) == emojis["accept"]:
+                    session.delete(server_settings)
+                    session.query(UserLevel).filter_by(**db_kwargs).delete()
+                    session.commit()
+
+                    embed = SuccessfulMessage("Я выключил систему уровней на вашем сервере")
+                else:
+                    embed = discord.Embed(
+                        title=":x: Отменено",
+                        description="Вы отменили удаление системы уровней на этом сервере",
+                        color=0xDD2E44
+                    )
+
+                await message.edit(embed=embed)
+                await message.clear_reactions()
+
             session.close()
-
-            await ctx.send(embed=message)
 
 
 def setup(bot):
