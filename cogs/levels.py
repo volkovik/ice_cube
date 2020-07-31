@@ -1,6 +1,7 @@
 import discord
 import datetime
 import asyncio
+import cmath
 from discord.ext import commands
 from discord.ext.commands import CommandError
 from discord.ext.commands import CooldownMapping, Cooldown
@@ -10,6 +11,46 @@ from main import ENGINE_DB
 from core.commands import BotCommand
 from core.templates import SuccessfulMessage, ErrorMessage
 from core.database import UserLevel, ServerSettingsOfLevels
+
+
+def get_exp_for_level(level: int):
+    """
+    Выдаёт количество опыта, необходимого для получения n уровня
+
+    :param level: n уровень
+    :type level: int
+    :return: кол-во опыта
+    :rtype: int
+    """
+
+    if level <= 0:
+        return 0
+    else:
+        return 5 * level ** 2 + 100 * level + 200
+
+
+def get_level(exp: int):
+    """
+    Выдаёт достигнутый уровень по количеству опыта
+
+    :param exp: количество опыта
+    :type exp: int
+    :return: уровень
+    :rtype: int
+    """
+
+    a = 5
+    b = 100
+    c = 200 - exp
+
+    D = b ** 2 - 4 * a * c
+
+    x = ((-b + cmath.sqrt(D)) / (2 * a)).real
+
+    if x < 0:
+        return 0
+    else:
+        return int(x)
 
 
 def get_user_experience(server, user):
@@ -129,8 +170,10 @@ class Level(commands.Cog, name="Уровни"):
 
                 update_user_experience(server, author, 25)
 
-                if user_exp % 500 > (user_exp + 25) % 500:
-                    await message.channel.send(f"{author.mention} получил `{(user_exp + 25) // 500} уровень`")
+                next_level = get_level(user_exp) + 1
+
+                if get_exp_for_level(next_level) <= user_exp + 25:
+                    await message.channel.send(f"{author.mention} получил `{next_level} уровень`")
 
     @commands.command(
         cls=BotCommand, name="rank",
@@ -146,15 +189,17 @@ class Level(commands.Cog, name="Уровни"):
             user = ctx.author
 
         user_exp = get_user_experience(ctx.guild, user)
+        user_level = get_level(user_exp)
 
         message = discord.Embed()
         message.add_field(
             name="Уровень",
-            value=str(user_exp // 500)
+            value=str(user_level)
         )
         message.add_field(
             name="Опыт",
-            value=f"{user_exp % 500}/500"
+            value=f"{user_exp - get_exp_for_level(user_level)}/"
+                  f"{get_exp_for_level(user_level + 1) - get_exp_for_level(user_level)}"
         )
         message.set_author(name=user.display_name, icon_url=user.avatar_url_as(static_format="jpg"))
 
