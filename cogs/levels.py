@@ -3,6 +3,7 @@ import datetime
 import asyncio
 import cmath
 import random
+import sqlalchemy
 from discord.ext import commands
 from discord.ext.commands import CommandError
 from discord.ext.commands import CooldownMapping, Cooldown
@@ -210,6 +211,46 @@ class Level(commands.Cog, name="Уровни"):
         message.set_author(name=user.display_name, icon_url=user.avatar_url_as(static_format="jpg"))
 
         await ctx.send(embed=message)
+
+    @commands.command(
+        cls=BotCommand, name="leaders"
+    )
+    @check_level_system_is_on()
+    async def get_leaders_on_server(self, ctx):
+        server = ctx.guild
+
+        Session = sessionmaker(bind=ENGINE_DB)
+        session = Session()
+
+        users = session.query(UserLevel).filter_by(
+            server_id=str(server.id)
+        ).order_by(sqlalchemy.desc(UserLevel.experience)).all()
+
+        top = []
+
+        for user_from_db in users:
+            if len(top) == 10:
+                break
+
+            user = server.get_member(int(user_from_db.user_id))
+
+            if user is None:
+                session.delete()
+            else:
+                user_exp = user_from_db.experience
+
+                top.append(f"**#{len(top) + 1}:** `{user.display_name}`\n"
+                           f"Уровень: {get_level(user_exp)} | Опыт: {user_exp}")
+
+        embed = discord.Embed(
+            title="Топ пользователей",
+            description="\n".join(top)
+        )
+
+        session.commit()
+        session.close()
+
+        await ctx.send(embed=embed)
 
     @commands.group(name="setlevels", invoke_without_command=True)
     @commands.has_permissions(administrator=True)
