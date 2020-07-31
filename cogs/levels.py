@@ -218,17 +218,17 @@ class Level(commands.Cog, name="Уровни"):
 
         if level_system_is_on(server):
             embed = discord.Embed(
-                title="Система уровней",
-                description=f"На данный момент на этом сервере нет системы уровней. Чтобы их включить, используйте "
-                            f"команду `{ctx.prefix}setlevels enable`"
-            )
-        else:
-            embed = discord.Embed(
                 title="Приватные комнаты",
                 description=f"На данный момент на этом сервере установлена система уровней. Чтобы их "
                             f"выключить, используйте команду `{ctx.prefix}setlevels disable`\n\n"
                             f"**Будьте бдительны, когда выключаете систему! Удалятся все настройки и сбросится опыт у "
                             f"каждого участника сервера!**"
+            )
+        else:
+            embed = discord.Embed(
+                title="Система уровней",
+                description=f"На данный момент на этом сервере нет системы уровней. Чтобы их включить, используйте "
+                            f"команду `{ctx.prefix}setlevels enable`"
             )
 
         await ctx.send(embed=embed)
