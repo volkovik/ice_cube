@@ -199,9 +199,13 @@ class Level(commands.Cog, name="Уровни"):
             value=str(user_level)
         )
         message.add_field(
-            name="Опыт",
+            name="До следующего уровня",
             value=f"{user_exp - get_exp_for_level(user_level)}/"
                   f"{get_exp_for_level(user_level + 1) - get_exp_for_level(user_level)}"
+        )
+        message.add_field(
+            name="Всего опыта",
+            value=str(user_exp)
         )
         message.set_author(name=user.display_name, icon_url=user.avatar_url_as(static_format="jpg"))
 
