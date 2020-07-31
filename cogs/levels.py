@@ -2,6 +2,7 @@ import discord
 import datetime
 import asyncio
 import cmath
+import random
 from discord.ext import commands
 from discord.ext.commands import CommandError
 from discord.ext.commands import CooldownMapping, Cooldown
@@ -167,12 +168,13 @@ class Level(commands.Cog, name="Уровни"):
                     return
 
                 user_exp = get_user_experience(server, author)
+                add_exp = random.randint(15, 30)
 
-                update_user_experience(server, author, 25)
+                update_user_experience(server, author, add_exp)
 
                 next_level = get_level(user_exp) + 1
 
-                if get_exp_for_level(next_level) <= user_exp + 25:
+                if get_exp_for_level(next_level) <= user_exp + add_exp:
                     await message.channel.send(f"{author.mention} получил `{next_level} уровень`")
 
     @commands.command(
