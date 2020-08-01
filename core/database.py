@@ -67,3 +67,4 @@ class ServerSettingsOfLevels(Base):
     __tablename__ = "servers_setting_of_levels"
 
     server_id = Column(String(32), primary_key=True)
+    levelup_message = Column(String(256), default=None)

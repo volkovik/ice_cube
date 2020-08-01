@@ -8,11 +8,15 @@ from discord.ext import commands
 from discord.ext.commands import CommandError
 from discord.ext.commands import CooldownMapping, Cooldown
 from sqlalchemy.orm import sessionmaker
+from string import Template
 
 from main import ENGINE_DB
-from core.commands import BotCommand
+from core.commands import BotCommand, BotGroupCommands
 from core.templates import SuccessfulMessage, ErrorMessage
 from core.database import UserLevel, ServerSettingsOfLevels
+
+
+DEFAULT_LEVELUP_MESSAGE = "$member_mention получил `$level уровень`"
 
 
 def get_exp_for_level(level: int):
@@ -53,6 +57,50 @@ def get_level(exp: int):
         return 0
     else:
         return int(x)
+
+
+def get_levelup_message(server):
+    """
+    Выдать сообщение при получении нового уровня
+
+    :param server: Сервер для которого нужно получить сообщение
+    :type server: discord.Guild
+    :return: Сообщение из базы данных или по умолчанию
+    :rtype: str
+    """
+
+    Session = sessionmaker(bind=ENGINE_DB)
+    session = Session()
+
+    settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(server.id)).first()
+
+    session.close()
+
+    if settings.levelup_message is None:
+        return DEFAULT_LEVELUP_MESSAGE
+    else:
+        return settings.levelup_message
+
+
+def format_levelup_message(text, ctx, level):
+    """
+    Форматировать сообщение по заданным переменным
+
+    :param text: Текст, которое нужно форматировать
+    :type text: str
+    :param ctx: Данные об сообщении
+    :type ctx: discord.Context
+    :param level: Уровень, который был достигнут
+    :type level: int
+    :return: Форматированное сообщение
+    :rtype: str
+    """
+
+    return Template(text).safe_substitute(
+        member_name=ctx.author.display_name,
+        member_mention=ctx.author.mention,
+        level=level
+    )
 
 
 def get_user_experience(server, user):
@@ -176,7 +224,9 @@ class Level(commands.Cog, name="Уровни"):
                 next_level = get_level(user_exp) + 1
 
                 if get_exp_for_level(next_level) <= user_exp + add_exp:
-                    await message.channel.send(f"{author.mention} получил `{next_level} уровень`")
+                    await message.channel.send(
+                        format_levelup_message(get_levelup_message(message.guild), message, next_level)
+                    )
 
     @commands.command(
         cls=BotCommand, name="rank",
@@ -376,6 +426,91 @@ class Level(commands.Cog, name="Уровни"):
                 await message.clear_reactions()
 
             session.close()
+
+    @levels_settings.group(name="message", invoke_without_command=True)
+    @check_level_system_is_on()
+    async def levelup_message(self, ctx):
+        """
+        Настройка сообщения при получении нового уровня
+        """
+
+        Session = sessionmaker(bind=ENGINE_DB)
+        session = Session()
+
+        settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+
+        session.close()
+
+        key_words_info = "Редактируя сообщение, вы можете использовать ключевые слова, например: `$member_mention`, " \
+                         "чтобы упомянуть пользователя\n" \
+                         "**Полный список ключевых слов:**\n" \
+                         "`$member_name` - имя пользователя\n" \
+                         "`$member_mention` - упомянуть пользователя\n" \
+                         "`$level` - достигнутый уровень"
+
+        if settings.levelup_message is None:
+            text = DEFAULT_LEVELUP_MESSAGE
+            additional_info = "Вы можете изменить это сообщение с помощью команды `>setlevels message edit`.\n"
+        else:
+            text = settings.levelup_message
+            additional_info = "Вы можете изменить это сообщение с помощью команды `>setlevels message edit` или " \
+                              "сбросить на стандартное сообщение с помощью команды `>setlevels message edit default`\n"
+
+        embed = discord.Embed(
+            title="Сообщение при получении нового уровня",
+            description=format_levelup_message(text, ctx, random.randint(1, 50))
+        )
+        embed.add_field(
+            name="Дополнительная информация",
+            value=additional_info + key_words_info
+        )
+
+        await ctx.send(embed=embed)
+
+    @levelup_message.group(
+        cls=BotGroupCommands, name="edit", invoke_without_command=True,
+        usage={"текст": ("текст, который будет отправляться по достижению нового уровня пользователем", True)}
+    )
+    async def edit_levelup_message(self, ctx, *, text=None):
+        """
+        Редактировать текст сообщения
+        """
+
+        Session = sessionmaker(bind=ENGINE_DB)
+        session = Session()
+
+        settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+
+        if text is None:
+            raise CommandError("Вы не ввели текст")
+        else:
+            settings.levelup_message = text
+
+        session.commit()
+        session.close()
+
+        await ctx.send(embed=SuccessfulMessage("Вы изменили текст сообщения"))
+
+    @edit_levelup_message.command(cls=BotCommand, name="default")
+    async def reset_levelup_message(self, ctx):
+        """
+        Сбросить текст сообщения по умолчанию
+        """
+
+        Session = sessionmaker(bind=ENGINE_DB)
+        session = Session()
+
+        settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+
+        if settings.levelup_message is None:
+            raise CommandError("Вы до этого не изменяли текст сообщения")
+        else:
+            settings.levelup_message = None
+
+        session.commit()
+        session.close()
+
+        await ctx.send(embed=SuccessfulMessage("Вы сбросил текст сообщения"))
 
 
 def setup(bot):
