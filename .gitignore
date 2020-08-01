@@ -143,3 +143,6 @@ dmypy.json
 # SQLite
 *.db
 *.sqlite3
+
+# Alembic migrations
+migrations/versions
