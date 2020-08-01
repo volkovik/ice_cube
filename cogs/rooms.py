@@ -5,7 +5,7 @@ from discord import PermissionOverwrite as Permissions
 from discord.ext.commands import CommandError
 from sqlalchemy.orm import sessionmaker
 
-from main import ENGINE_DB
+from main import Session
 from core.database import ServerSettingsOfRooms, UserSettingsOfRoom, UserPermissionsOfRoom, PermissionsForRoom
 from core.commands import BotCommand
 from core.templates import SuccessfulMessage, ErrorMessage
@@ -26,7 +26,6 @@ def get_user_settings(server, owner):
     :rtype: dict or None
     """
 
-    Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
     settings_from_db = session.query(UserSettingsOfRoom).filter_by(
@@ -55,7 +54,6 @@ def update_user_settings(server, owner, **settings):
     :param settings: параметры, которые должны быть изменены
     """
 
-    Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
     db_kwargs = {
@@ -115,7 +113,6 @@ def get_permissions_for_all_users(server, owner):
     :rtype: dict
     """
 
-    Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
     all_permissions = session.query(UserPermissionsOfRoom).filter_by(
@@ -150,7 +147,6 @@ def update_permissions_for_all_users(server, owner, permissions):
     :type permissions: dict
     """
 
-    Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
     db_kwargs = {
@@ -202,7 +198,6 @@ def update_permissions_for_user(server, owner, user, permissions):
     :type permissions: PermissionsForRoom
     """
 
-    Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
     db_kwargs = {
@@ -235,7 +230,6 @@ def remove_permissions_for_user(server, owner, user):
     :type user: discord.Member or discord.User
     """
 
-    Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
     permissions_for_user = session.query(UserPermissionsOfRoom).filter_by(
@@ -259,7 +253,6 @@ def get_room_creator(server):
     :rtype: discord.VoiceChannel or None
     """
 
-    Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
     channel_from_db = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
@@ -282,7 +275,6 @@ def delete_room_creator(server):
     :type server: discord.Guild
     """
 
-    Session = sessionmaker(bind=ENGINE_DB)
     session = Session()
 
     channel_from_db = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
@@ -803,7 +795,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         server = ctx.guild
 
-        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
         settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
 
@@ -838,7 +829,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         server = ctx.guild
 
-        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
         settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
 
@@ -868,7 +858,6 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
         server = ctx.guild
 
-        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
         settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
 
