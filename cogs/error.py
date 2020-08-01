@@ -28,8 +28,13 @@ class ErrorHandler(commands.Cog):
             return
         elif isinstance(error, commands.MissingPermissions):
             message = ErrorMessage("У вас недостаточно прав для использования данной команды")
-        elif isinstance(error, commands.BadArgument) and re.search(r"Member \"\w+\" not found", error.args[0]):
+        elif isinstance(error, commands.BadArgument) and re.search(r"Member \".+\" not found", error.args[0]):
             message = ErrorMessage("Я не нашёл указанного участника на сервере")
+        elif isinstance(error, commands.BadArgument) and re.search(r"Converting to \"int\" failed for parameter "
+                                                                   r"\".+\".", error.args[0]):
+            message = ErrorMessage("Вы можете ввести только число")
+        elif isinstance(error, commands.UnexpectedQuoteError):
+            message = ErrorMessage("Вы использовали кавычку в строке, которая не обёрнута кавычками")
         elif isinstance(error, commands.MissingRequiredArgument) and \
                 "user is a required argument that is missing." == error.args[0]:
             message = ErrorMessage("Вы не ввели пользователя")

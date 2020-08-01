@@ -15,6 +15,7 @@
 ## Требуемые модули
 - [discord.py](https://github.com/Rapptz/discord.py)
 - [SQLAlchemy](https://www.sqlalchemy.org/)
+- [Alembic](https://alembic.sqlalchemy.org/) (Если вы собираетесь использовать миграции)
 
 ## Полезные ссылки
 - [Сервер Discord](https://discord.gg/atxwBRB)
