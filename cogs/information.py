@@ -390,7 +390,6 @@ class Information(commands.Cog, name="Информация"):
 
         region = convert_voice_region(server.region)
         verification = convert_verification_level(server.verification_level)
-        security = str(verification) + (" (2FA)" if server.mfa_level is True else "")
         created_at = server.created_at.strftime("%d.%m.%Y, %H:%M:%S")
 
         def members_counter():
@@ -422,7 +421,6 @@ class Information(commands.Cog, name="Информация"):
             title=f"Информация о \"{server.name}\"",
             description=f"**Владелец:** {server.owner}"
                         f"\n**Регион:** {region}"
-                        f"\n**Верификация:** {security}"
                         f"\n**Дата создания:** {created_at}",
             color=self.color
         )
