@@ -18,7 +18,6 @@ DEFAULT_PREFIX = "." if not DEV_MODE else ">"
 # База данных
 ENGINE_DB = sqlalchemy.create_engine(os.environ.get("DATABASE_URL"))
 Session = sessionmaker(bind=ENGINE_DB)
-Base.metadata.create_all(bind=ENGINE_DB)
 
 # Конфигурация логирования
 output_log_format = "%(asctime)s | %(levelname)s:%(name)s: %(message)s"

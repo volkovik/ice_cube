@@ -53,3 +53,8 @@ class UserScoreToAnotherUser(Base):
     user_id = Column(String(32), primary_key=True)
     rated_user_id = Column(String(32), primary_key=True)
     score = Column(Boolean, nullable=False)
+
+
+class TestTable(Base):
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    test = Column(String, default="test")
