@@ -17,6 +17,7 @@ DEFAULT_PREFIX = "." if not DEV_MODE else ">"
 
 # База данных
 ENGINE_DB = sqlalchemy.create_engine(os.environ.get("DATABASE_URL"))
+Session = sessionmaker(bind=ENGINE_DB)
 Base.metadata.create_all(bind=ENGINE_DB)
 
 # Конфигурация логирования
@@ -59,7 +60,6 @@ def get_prefix(bot, message):
     prefix = DEFAULT_PREFIX
 
     if message.guild:
-        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
         server_from_db = session.query(Server).filter_by(server_id=str(message.guild.id)).first()

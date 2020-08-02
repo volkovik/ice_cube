@@ -1,8 +1,7 @@
 from discord.ext import commands
 from discord.ext.commands import CommandError
-from sqlalchemy.orm import sessionmaker
 
-from main import ENGINE_DB, DEFAULT_PREFIX
+from main import Session, DEFAULT_PREFIX
 from core.commands import BotCommand
 from core.database import Server
 from core.templates import SuccessfulMessage
@@ -25,7 +24,6 @@ class Settings(commands.Cog, name="Настройки"):
 
         server = ctx.guild
 
-        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
         db_kwargs = {

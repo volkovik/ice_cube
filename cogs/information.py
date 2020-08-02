@@ -5,7 +5,7 @@ from discord.ext import commands
 from discord.ext.commands import CommandError
 from sqlalchemy.orm import sessionmaker
 
-from main import ENGINE_DB, __version__
+from main import Session, __version__
 from core.database import User, UserScoreToAnotherUser
 from core.commands import BotCommand, BotGroupCommands
 from core.templates import SuccessfulMessage, ErrorMessage
@@ -42,7 +42,6 @@ class Information(commands.Cog, name="Информация"):
             activity = f"**{convert_activity_type(user.activity.type)}** " \
                        f"{user.activity.name}\n" if user.activity else ""
 
-        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
         user_from_db = session.query(User).filter_by(user_id=str(user.id)).first()
@@ -89,7 +88,6 @@ class Information(commands.Cog, name="Информация"):
         Редактирование описания в профиле
         """
 
-        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
         user_from_db = session.query(User).filter_by(user_id=str(ctx.author.id)).first()
@@ -136,7 +134,6 @@ class Information(commands.Cog, name="Информация"):
 
         timeout_message = ErrorMessage("Превышено время ожидания")
 
-        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
         db_kwargs = {
@@ -285,7 +282,6 @@ class Information(commands.Cog, name="Информация"):
         elif user.bot:
             raise CommandError("Вы не можете оценить бота")
 
-        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
         db_kwargs = {
@@ -325,7 +321,6 @@ class Information(commands.Cog, name="Информация"):
         elif user.bot:
             raise CommandError("Вы не можете оценить бота")
 
-        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
         db_kwargs = {
@@ -365,7 +360,6 @@ class Information(commands.Cog, name="Информация"):
         elif user.bot:
             raise CommandError("Вы не можете удалить оценку у бота")
 
-        Session = sessionmaker(bind=ENGINE_DB)
         session = Session()
 
         db_kwargs = {
@@ -396,7 +390,6 @@ class Information(commands.Cog, name="Информация"):
 
         region = convert_voice_region(server.region)
         verification = convert_verification_level(server.verification_level)
-        security = str(verification) + (" (2FA)" if server.mfa_level is True else "")
         created_at = server.created_at.strftime("%d.%m.%Y, %H:%M:%S")
 
         def members_counter():
@@ -428,7 +421,6 @@ class Information(commands.Cog, name="Информация"):
             title=f"Информация о \"{server.name}\"",
             description=f"**Владелец:** {server.owner}"
                         f"\n**Регион:** {region}"
-                        f"\n**Верификация:** {security}"
                         f"\n**Дата создания:** {created_at}",
             color=self.color
         )
