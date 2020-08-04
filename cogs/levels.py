@@ -98,12 +98,56 @@ def level_system_is_enabled(ctx):
     return server_settings is not None
 
 
-def check_level_system_is_on():
+def level_system_is_on():
     """
-    Декоратор для discord.Command, с проверкой, включена ли система уровней на сервере
+    Декоратор для discord.Command, с проверкой, включен ли рейтинг участников на сервере
     """
 
     return commands.check(level_system_is_enabled)
+
+
+def level_system_is_off():
+    """
+    Декоратор для discord.Command, с проверкой, выключен ли рейтинг участников на сервере
+    """
+
+    def predicate(ctx):
+        return not level_system_is_enabled(ctx)
+
+    return commands.check(predicate)
+
+
+def levelup_message_is_custom():
+    def predicate(ctx):
+        session = Session()
+        server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+        session.close()
+
+        return server_settings.levelup_message is not None
+
+    return commands.check(predicate)
+
+
+def levelup_message_destination_is_not_dm():
+    def predicate(ctx):
+        session = Session()
+        server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+        session.close()
+
+        return not server_settings.levelup_message_dm
+
+    return commands.check(predicate)
+
+
+def levelup_message_destination_is_not_current():
+    def predicate(ctx):
+        session = Session()
+        server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+        session.close()
+
+        return server_settings.levelup_message_channel_id is not None or server_settings.levelup_message_dm
+
+    return commands.check(predicate)
 
 
 class Level(commands.Cog, name="Уровни"):
@@ -183,7 +227,7 @@ class Level(commands.Cog, name="Уровни"):
         cls=BotCommand, name="rank",
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}
     )
-    @check_level_system_is_on()
+    @level_system_is_on()
     async def get_current_level(self, ctx, user: commands.MemberConverter = None):
         """
         Показывает уровень пользователя
@@ -228,7 +272,7 @@ class Level(commands.Cog, name="Уровни"):
     @commands.command(
         cls=BotCommand, name="leaders"
     )
-    @check_level_system_is_on()
+    @level_system_is_on()
     async def get_leaders_on_server(self, ctx):
         server = ctx.guild
 
@@ -288,38 +332,26 @@ class Level(commands.Cog, name="Уровни"):
 
     @levels_settings.command(cls=BotCommand, name="enable")
     @commands.has_permissions(administrator=True)
+    @level_system_is_off()
     async def enable_levels_system(self, ctx):
         """
         Включить рейтинг участников на сервере
         """
 
-        server = ctx.guild
-
         session = Session()
+        session.add(ServerSettingsOfLevels(server_id=str(ctx.guild.id)))
+        session.commit()
+        session.close()
 
-        db_kwargs = {
-            "server_id": str(server.id)
-        }
+        message = SuccessfulMessage(f"Вы включили рейтинг участников на сервере.\n"
+                                    f"Используйте команду `{ctx.prefix}help setlevels`, чтобы узнать о "
+                                    f"настройках")
 
-        server_settings = session.query(ServerSettingsOfLevels).filter_by(**db_kwargs).first()
-
-        if server_settings is not None:
-            session.close()
-            raise CommandError("На сервере уже включён рейтинг участников")
-        else:
-            session.add(ServerSettingsOfLevels(**db_kwargs))
-            session.commit()
-            session.close()
-
-            message = SuccessfulMessage(f"Вы включили рейтинг участников на сервере.\n"
-                                        f"Используйте команду `{ctx.prefix}help setlevels`, чтобы узнать о "
-                                        f"настройках")
-
-            await ctx.send(embed=message)
+        await ctx.send(embed=message)
 
     @levels_settings.command(cls=BotCommand, name="disable")
     @commands.has_permissions(administrator=True)
-    @check_level_system_is_on()
+    @level_system_is_on()
     async def disable_levels_system(self, ctx):
         """
         Выключить рейтинг участников на сервере
@@ -335,56 +367,52 @@ class Level(commands.Cog, name="Уровни"):
 
         server_settings = session.query(ServerSettingsOfLevels).filter_by(**db_kwargs).first()
 
-        if server_settings is None:
-            session.close()
-            raise CommandError("На сервере нет рейтинга участников")
+        emojis = {
+            "accept": "✅",
+            "cancel": "🚫"
+        }
+
+        embed = discord.Embed(
+            title="Выключение рейтинга участников",
+            description=f"Вы уверены, что хотите выключить рейтинг участников?\n\n"
+                        f"{emojis['accept']} - Да, выключить\n"
+                        f"{emojis['cancel']} - Нет, отменить выключение"
+        )
+
+        message = await ctx.send(embed=embed)
+
+        await message.add_reaction(emojis["accept"])
+        await message.add_reaction(emojis["cancel"])
+
+        def check(reaction, user):
+            return ctx.author == user and str(reaction) in emojis.values()
+
+        try:
+            reaction, _ = await self.client.wait_for('reaction_add', timeout=60.0, check=check)
+        except asyncio.TimeoutError:
+            await message.edit(embed=ErrorMessage("Превышено время ожидания"))
+            await message.clear_reactions()
         else:
-            emojis = {
-                "accept": "✅",
-                "cancel": "🚫"
-            }
+            if str(reaction) == emojis["accept"]:
+                session.delete(server_settings)
+                session.query(UserLevel).filter_by(**db_kwargs).delete()
+                session.commit()
 
-            embed = discord.Embed(
-                title="Выключение рейтинга участников",
-                description=f"Вы уверены, что хотите выключить рейтинг участников?\n\n"
-                            f"{emojis['accept']} - Да, выключить\n"
-                            f"{emojis['cancel']} - Нет, отменить выключение"
-            )
-
-            message = await ctx.send(embed=embed)
-
-            await message.add_reaction(emojis["accept"])
-            await message.add_reaction(emojis["cancel"])
-
-            def check(reaction, user):
-                return ctx.author == user and str(reaction) in emojis.values()
-
-            try:
-                reaction, _ = await self.client.wait_for('reaction_add', timeout=60.0, check=check)
-            except asyncio.TimeoutError:
-                await message.edit(embed=ErrorMessage("Превышено время ожидания"))
-                await message.clear_reactions()
+                embed = SuccessfulMessage("Вы выключили рейтинг участников на сервере")
             else:
-                if str(reaction) == emojis["accept"]:
-                    session.delete(server_settings)
-                    session.query(UserLevel).filter_by(**db_kwargs).delete()
-                    session.commit()
+                embed = discord.Embed(
+                    title=":x: Отменено",
+                    description="Вы отменили выключение рейтинга участников на сервере",
+                    color=0xDD2E44
+                )
 
-                    embed = SuccessfulMessage("Вы выключили рейтинг участников на сервере")
-                else:
-                    embed = discord.Embed(
-                        title=":x: Отменено",
-                        description="Вы отменили выключение рейтинга участников на сервере",
-                        color=0xDD2E44
-                    )
+            await message.edit(embed=embed)
+            await message.clear_reactions()
 
-                await message.edit(embed=embed)
-                await message.clear_reactions()
-
-            session.close()
+        session.close()
 
     @levels_settings.group(name="message", invoke_without_command=True)
-    @check_level_system_is_on()
+    @level_system_is_on()
     async def levelup_message(self, ctx):
         """
         Настройка сообщения при получении нового уровня
@@ -458,7 +486,7 @@ class Level(commands.Cog, name="Уровни"):
         cls=BotGroupCommands, name="edit", invoke_without_command=True,
         usage={"текст": ("текст, который будет отправляться по достижению нового уровня пользователем", True)}
     )
-    @check_level_system_is_on()
+    @level_system_is_on()
     async def edit_levelup_message(self, ctx, *, text=None):
         """
         Редактировать текст сообщения
@@ -478,7 +506,8 @@ class Level(commands.Cog, name="Уровни"):
         await ctx.send(embed=SuccessfulMessage("Вы изменили текст сообщения"))
 
     @edit_levelup_message.command(cls=BotCommand, name="default")
-    @check_level_system_is_on()
+    @level_system_is_on()
+    @levelup_message_is_custom()
     async def reset_levelup_message(self, ctx):
         """
         Сбросить текст сообщения по умолчанию
@@ -486,12 +515,7 @@ class Level(commands.Cog, name="Уровни"):
 
         session = Session()
         settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
-
-        if settings.levelup_message is None:
-            raise CommandError("Вы до этого не изменяли текст сообщения, чтобы сбрасывать его")
-        else:
-            settings.levelup_message = None
-
+        settings.levelup_message = None
         session.commit()
         session.close()
 
@@ -501,7 +525,7 @@ class Level(commands.Cog, name="Уровни"):
         cls=BotGroupCommands, name="send", invoke_without_command=True,
         usage={"канал": ("упоминание, ID или название текстового канала", True)}
     )
-    @check_level_system_is_on()
+    @level_system_is_on()
     async def edit_levelup_message_destination(self, ctx, channel=None):
         """
         Изменить канал, где присылаются сообщения о получении нового уровня пользователями
@@ -534,7 +558,8 @@ class Level(commands.Cog, name="Уровни"):
         session.close()
 
     @edit_levelup_message_destination.command(name="dm")
-    @check_level_system_is_on()
+    @level_system_is_on()
+    @levelup_message_destination_is_not_dm()
     async def set_levelup_message_destination_as_user_dm(self, ctx):
         """
         Отправлять сообщение о новом уровне в личные сообщения пользователю
@@ -544,22 +569,17 @@ class Level(commands.Cog, name="Уровни"):
 
         session = Session()
         settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(server.id)).first()
-
-        if settings.levelup_message_dm:
-            session.close()
-            raise CommandError("Сообщения о новом уровне и так присылаются в ЛС пользователю")
-        else:
-            settings.levelup_message_dm = True
-            settings.levelup_message_channel_id = None
-            session.commit()
-
-            await ctx.send(embed=SuccessfulMessage("Теперь сообщения о новом уровне будут присылаться в ЛС "
-                                                   "пользователю"))
-
+        settings.levelup_message_dm = True
+        settings.levelup_message_channel_id = None
+        session.commit()
         session.close()
 
+        await ctx.send(embed=SuccessfulMessage("Теперь сообщения о новом уровне будут присылаться в ЛС "
+                                               "пользователю"))
+
     @edit_levelup_message_destination.command(name="current")
-    @check_level_system_is_on()
+    @level_system_is_on()
+    @levelup_message_destination_is_not_current()
     async def set_levelup_message_destination_as_channel_where_reached_new_level(self, ctx):
         """
         Отправлять сообщение о новом уровне в том канале, где пользователь получил новый уровень
@@ -569,20 +589,13 @@ class Level(commands.Cog, name="Уровни"):
 
         session = Session()
         settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(server.id)).first()
-
-        if not settings.levelup_message_dm and settings.levelup_message_channel_id is None:
-            session.close()
-            raise CommandError("Сообщения о новом уровне и так присылаются в том же канале, где пользователь получил "
-                               "новый уровень")
-        else:
-            settings.levelup_message_dm = False
-            settings.levelup_message_channel_id = None
-            session.commit()
-
-            await ctx.send(embed=SuccessfulMessage("Теперь сообщения о новом уровне будут присылаться в том же канале "
-                                                   "где пользователь достиг нового уровня"))
-
+        settings.levelup_message_dm = False
+        settings.levelup_message_channel_id = None
+        session.commit()
         session.close()
+
+        await ctx.send(embed=SuccessfulMessage("Теперь сообщения о новом уровне будут присылаться в том же канале "
+                                               "где пользователь достиг нового уровня"))
 
 
 def setup(bot):
