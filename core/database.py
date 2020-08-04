@@ -68,3 +68,5 @@ class ServerSettingsOfLevels(Base):
 
     server_id = Column(String(32), primary_key=True)
     levelup_message = Column(String(256), default=None)
+    levelup_message_channel_id = Column(String(32), server_default=None)
+    levelup_message_dm = Column(Boolean, default=False, nullable=False)

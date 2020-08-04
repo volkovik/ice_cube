@@ -361,7 +361,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
     @commands.Cog.listener("on_voice_state_update")
     async def voice_master(self, user, before, after):
         """
-        Создание и удаление команты, когда пользователей заходит, выходит или перемещается по голосовым каналам
+        Создание и удаление комнаты, когда пользователей заходит, выходит или перемещается по голосовым каналам
         """
 
         server = after.channel.guild if before.channel is None else before.channel.guild
