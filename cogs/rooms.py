@@ -430,16 +430,19 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         session.close()
 
     @commands.Cog.listener("on_guild_channel_delete")
-    async def voice_master_checker_deleted_channels(self, channel):
+    async def rooms_master_check_deleted_channels(self, channel):
         """
         Проверка удалённого канала на канал, который создаёт приватные комнаты
         """
 
-        creator = get_room_creator(channel.guild)
+        session = Session()
+        settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(channel.guild.id)).fisrt()
 
-        # Если удалённый был каналом, который создаёт комнаты, то удалить его в базе данных
-        if channel == creator:
-            delete_room_creator(channel.guild)
+        if settings is not None and settings.channel_id_creates_rooms == str(channel.id):
+            session.delete(settings)
+            session.close()
+
+        session.close()
 
     @commands.Cog.listener("on_guild_channel_update")
     async def voice_master_checker_updated_channels(self, before, after):
