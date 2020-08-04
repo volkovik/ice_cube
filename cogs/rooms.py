@@ -3,7 +3,6 @@ import asyncio
 from discord.ext import commands
 from discord import PermissionOverwrite as Permissions
 from discord.ext.commands import CommandError
-from sqlalchemy.orm import sessionmaker
 
 from main import Session
 from core.database import ServerSettingsOfRooms, UserSettingsOfRoom, UserPermissionsOfRoom, PermissionsForRoom
@@ -359,63 +358,76 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         self.client = bot
 
     @commands.Cog.listener("on_voice_state_update")
-    async def voice_master(self, user, before, after):
+    async def rooms_master(self, user, before, after):
         """
-        Создание и удаление команты, когда пользователей заходит, выходит или перемещается по голосовым каналам
+        Создание комнат и удаление комнате без пользователей
         """
 
         server = after.channel.guild if before.channel is None else before.channel.guild
-        creator = get_room_creator(server)
 
-        # если канал не найден, то завершить процесс
-        if creator is None:
-            return
+        session = Session()
+        db_kwargs = {"server_id": str(server.id)}
+        server_settings = session.query(ServerSettingsOfRooms).filter_by(**db_kwargs).first()
 
-        # если канал не имеет категории, то удалить этот канал в базе данных и завершить процесс
-        if creator.category is None:
-            delete_room_creator(server)
-
+        if server_settings is None:
+            session.close()
             return
         else:
-            creator_category = creator.category
+            creator_rooms = server.get_channel(int(server_settings.channel_id_creates_rooms))
 
-        # Когда пользователь перемещается по войсам или только что присоеденился к войсу
+        if creator_rooms is None or creator_rooms.category is None:
+            session.delete(server_settings)
+            session.commit()
+            session.close()
+            return
+        else:
+            rooms_category = creator_rooms.category
+
+        if before.channel:
+            channel = before.channel
+
+            if channel in rooms_category.voice_channels and channel != creator_rooms and len(channel.members) == 0:
+                await channel.delete()
+
         if after.channel:
             channel = after.channel
 
-            # Если канал, в котом сейчас находится пользователь является тем каналом, который создаёт комнаты, то
-            # начинается конфигурация комнаты
-            if creator == channel:
-                settings = get_user_settings(server, user)
+            if creator_rooms == channel:
+                db_kwargs["owner_id"] = str(user.id)
+                user_settings = session.query(UserSettingsOfRoom).filter_by(**db_kwargs).first()
                 everyone = server.default_role
 
-                if settings is None:
-                    update_user_settings(server, user)
-                    settings = get_user_settings(server, user)
+                if user_settings is None:
+                    user_settings = UserSettingsOfRoom(**db_kwargs)
+                    session.add(user_settings)
+                    session.commit()
 
                 permissions_for_room = {
                     user: OWNER_PERMISSIONS,
-                    everyone: Permissions(connect=not settings["is_locked"])
+                    everyone: Permissions(connect=not user_settings.is_locked)
                 }
-                permissions_for_room.update(get_permissions_for_all_users(server, user))
+                users_with_permissions = session.query(UserPermissionsOfRoom).filter_by(**db_kwargs).all()
+
+                for perms in users_with_permissions:
+                    user_with_perms = server.get_member(int(perms.user_id))
+
+                    if user_with_perms is None:
+                        session.delete(perms)
+                        session.commit()
+                    else:
+                        permissions_for_room[user_with_perms] = Permissions(connect=perms.permissions.value)
 
                 room = await server.create_voice_channel(
-                    name=settings["name"],
-                    category=creator_category,
+                    name=user_settings.name if user_settings.name is not None else user.display_name,
+                    category=rooms_category,
                     overwrites=permissions_for_room,
-                    user_limit=settings["user_limit"],
-                    bitrate=settings["bitrate"] * 1000
+                    user_limit=user_settings.user_limit,
+                    bitrate=user_settings.bitrate * 1000
                 )
 
                 await user.move_to(room)
 
-        if before.channel:
-            # когда пользователь выходит из голосового канала
-            channel = before.channel
-
-            if channel in creator_category.voice_channels and channel != creator and len(channel.members) == 0:
-                # удалить голосовой канал, если он является комнатой и в ней нет пользователей
-                await channel.delete()
+        session.close()
 
     @commands.Cog.listener("on_guild_channel_delete")
     async def voice_master_checker_deleted_channels(self, channel):
