@@ -54,23 +54,6 @@ class Help(HelpCommand):
 
         self.command_attrs["hidden"] = True  # не показывать команды, которые заведомо скрыты
 
-    def shorten_text(self, text):
-        """
-        Сокращение строки до определённого количества символов
-
-        :param text: строка
-        :return: обработанная строка или та же строка, если строка меньше или равна лимиту символов
-        """
-
-        if text:
-            text = text[0].lower() + text[1:]  # сделать первую букву маленькой
-
-        # если описание превышает ограничение по символам, то сократить текст и поставить в конце троеточие
-        if len(text) > self.width:
-            text = text[0:self.width - 3] + '...'
-
-        return text
-
     def get_destination(self):
         """
         Получение канала для отправки сообщения
@@ -124,8 +107,7 @@ class Help(HelpCommand):
             commands_descriptions = []
 
             for cmd in cmds:
-                commands_descriptions.append(f"`{self.get_command_signature(cmd)}` - "
-                                             f"{self.shorten_text(cmd.short_doc)}")
+                commands_descriptions.append(f"`{self.get_command_signature(cmd)}` - {cmd.short_doc}")
 
             self.embed.add_field(
                 name=category,
@@ -144,8 +126,7 @@ class Help(HelpCommand):
 
         self.embed.title = f"Команда \"{command.name}\""
 
-        self.embed.description = f"`{self.get_command_signature(command, args=True)}` - " \
-                                 f"{self.shorten_text(command.short_doc)}"
+        self.embed.description = f"`{self.get_command_signature(command, args=True)}` - {command.short_doc}"
 
         if command.usage:
             self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
@@ -165,8 +146,7 @@ class Help(HelpCommand):
         """
 
         self.embed.title = f"Команда \"{group.name}\""
-        self.embed.description = f"`{self.get_command_signature(group, args=True)}` - " \
-                                 f"{self.shorten_text(group.short_doc)}"
+        self.embed.description = f"`{self.get_command_signature(group, args=True)}` - {group.short_doc}"
 
         if group.usage:
             self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
@@ -180,14 +160,18 @@ class Help(HelpCommand):
             commands = []
 
             for cmd in group.all_commands.values():
-                commands.append(f"`{self.get_command_signature(cmd, args=False)}` - "
-                                f"{self.shorten_text(cmd.short_doc)}")
+                try:
+                    if await cmd.can_run(self.context):
+                        commands.append(f"`{self.get_command_signature(cmd, args=False)}` - {cmd.short_doc}")
+                except commands.CommandError:
+                    pass
 
-            self.embed.add_field(
-                name=f"Дополнительные команды",
-                value="\n".join(commands),
-                inline=False
-            )
+            if commands:
+                self.embed.add_field(
+                    name=f"Дополнительные команды",
+                    value="\n".join(commands),
+                    inline=False
+                )
 
         await self.context.send(embed=self.embed)
 
