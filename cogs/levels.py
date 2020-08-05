@@ -12,7 +12,7 @@ from string import Template
 from main import Session
 from core.commands import BotCommand, BotGroupCommands
 from core.templates import SuccessfulMessage, ErrorMessage
-from core.database import UserLevel, ServerSettingsOfLevels
+from core.database import UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels
 
 
 DEFAULT_LEVELUP_MESSAGE_FOR_SERVER = "$member_mention получил `$level уровень`"
@@ -182,6 +182,17 @@ def levelup_message_destination_is_not_current():
     return commands.check(predicate)
 
 
+def level_awards_exists():
+    def predicate(ctx):
+        session = Session()
+        if not level_system_is_enabled(session, ctx):
+            return False
+        server_awards = session.query(ServerAwardOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+        return True if server_awards is not None else False
+
+    return commands.check(predicate)
+
+
 class Level(commands.Cog, name="Уровни"):
     def __init__(self, bot):
         self.client = bot
@@ -229,6 +240,23 @@ class Level(commands.Cog, name="Уровни"):
                 next_level = get_level(before_exp) + 1
 
                 if get_experience(next_level) <= user_db.experience and server_settings.notify_of_levelup:
+                    del db_kwargs["user_id"]
+                    awards = session.query(ServerAwardOfLevels).filter_by(**db_kwargs, level=next_level).all()
+
+                    roles = []
+
+                    if awards is not None:
+                        for award in awards:
+                            role = server.get_role(int(award.role_id))
+
+                            if role is None:
+                                session.delete(award)
+                                session.commit()
+                            else:
+                                roles.append(role)
+
+                    await user.add_roles(*roles)
+
                     if server_settings.levelup_message is not None:
                         text = server_settings.levelup_message
                     else:
@@ -351,7 +379,8 @@ class Level(commands.Cog, name="Уровни"):
             title="Настройка рейтинга участников",
         )
 
-        if level_system_is_enabled(ctx):
+        session = Session()
+        if level_system_is_enabled(session, ctx):
             embed.description = f"**На сервере включён рейтинг участников**\n\n" \
                                 f"Используйте команду `{ctx.prefix}help setlevels`, чтобы узнать о настройках\n" \
                                 f"Если вы хотите выключить это, используйте команду `{ctx.prefix}help setlevels " \
@@ -359,6 +388,7 @@ class Level(commands.Cog, name="Уровни"):
         else:
             embed.description = f"**На сервере нет рейтинга участников.**\n\n" \
                                 f"Чтобы включить это, используйте команду `{ctx.prefix}help setlevels enable`"
+        session.close()
 
         await ctx.send(embed=embed)
 
@@ -659,6 +689,162 @@ class Level(commands.Cog, name="Уровни"):
 
         await ctx.send(embed=SuccessfulMessage("Теперь сообщения о новом уровне будут присылаться в том же канале "
                                                "где пользователь достиг нового уровня"))
+
+    @levels_settings.group(name="award", invoke_without_command=True)
+    @level_system_is_on()
+    async def awards_for_levels(self, ctx):
+        """
+        Настройка наград за достижение определённого уровня
+        """
+
+        server = ctx.guild
+
+        session = Session()
+        awards = session.query(ServerAwardOfLevels).filter_by(server_id=str(server.id)).all()
+        session.close()
+
+        sorted_awards = {}
+
+        for award in awards:
+            role = server.get_role(int(award.role_id))
+
+            if role is None:
+                session.delete(award)
+                session.commit()
+                continue
+
+            if award.level in sorted_awards:
+                sorted_awards[award.level].append(f"`{role.name}`")
+            else:
+                sorted_awards[award.level] = [f"`{role.name}`"]
+
+        if sorted_awards:
+            text = "\n".join([f"`{level} уровень`: {', '.join(roles)}" for level, roles in sorted_awards.items()])
+        else:
+            text = f"**Здесь ничего нет**\n\n" \
+                   f"Вы можете добавить роль в качестве награды за достижение определённого уровня пользователем, " \
+                   f"используя команду `.setlevels award add`"
+
+        embed = discord.Embed(
+            title="Награды за получение уровня",
+            description=text
+        )
+
+        await ctx.send(embed=embed)
+
+    @awards_for_levels.command(
+        cls=BotCommand, name="add",
+        usage={
+            "роль": ("упоминание, ID или название текстового канала", True),
+            "уровень": ("по достижению этого уровня, пользователь получит роль", True)
+        }
+    )
+    @level_system_is_on()
+    async def add_award_for_level(self, ctx, role: commands.RoleConverter = None, level: int = None):
+        """
+        Добавить роль в качестве награды за получение определённого уровня
+        """
+
+        if role is None:
+            raise CommandError("Вы не ввели роль")
+        elif level is None:
+            raise CommandError("Вы не ввели уровень")
+
+        session = Session()
+        db_kwargs = {
+            "server_id": str(ctx.guild.id),
+            "role_id": str(role.id)
+        }
+        award = session.query(ServerAwardOfLevels).filter_by(**db_kwargs).first()
+
+        if award is not None:
+            session.close()
+            raise CommandError("Эта роль уже используется в качестве награды.\n"
+                               "Используйте `.setlevels award edit`, если вы хотите изменить её")
+        else:
+            award = ServerAwardOfLevels(**db_kwargs, level=level)
+            session.add(award)
+            session.commit()
+            session.close()
+
+            await ctx.send(embed=SuccessfulMessage(f"Вы добавили роль `{role.name}` в качестве награды по достижению "
+                                                   f"`{level} уровня`"))
+
+    @awards_for_levels.command(
+        cls=BotCommand, name="edit",
+        usage={
+            "роль": ("упоминание, ID или название текстового канала", True),
+            "уровень": ("по достижению этого уровня, пользователь получит роль", True)
+        }
+    )
+    @level_awards_exists()
+    async def edit_award_for_level(self, ctx, role: commands.RoleConverter = None, level: int = None):
+        """
+        Редактировать требуемый уровень для получения роли
+        """
+
+        if role is None:
+            raise CommandError("Вы не ввели роль")
+        elif level is None:
+            raise CommandError("Вы не ввели уровень")
+
+        session = Session()
+        award = session.query(ServerAwardOfLevels).filter_by(server_id=str(ctx.guild.id), role_id=str(role.id)).first()
+
+        if award is None:
+            session.close()
+            raise CommandError("Этой роли нет в списке наград за уровень.\n"
+                               "Используйте `.setlevels award add`, если вы хотите добавить её")
+        elif level == award.level:
+            session.close()
+            raise CommandError("Эту роль и так можно получить, достигнув введённого уровня")
+        else:
+            award.level = level
+            session.commit()
+            session.close()
+
+            await ctx.send(embed=SuccessfulMessage(f"Теперь роль `{role.name}` можно получить по достижению `{level} "
+                                                   f"уровня`"))
+
+    @awards_for_levels.command(
+        cls=BotCommand, name="remove",
+        usage={"роль": ("упоминание, ID или название текстового канала", True)}
+    )
+    @level_awards_exists()
+    async def remove_award_for_level(self, ctx, role: commands.RoleConverter = None):
+        """
+        Удалить роль из списка наград за уровень
+        """
+
+        if role is None:
+            raise CommandError("Вы не ввели роль")
+
+        session = Session()
+        award = session.query(ServerAwardOfLevels).filter_by(server_id=str(ctx.guild.id), role_id=str(role.id)).first()
+
+        if award is None:
+            session.close()
+            raise CommandError("Этой роли нет в списке наград за уровень.")
+        else:
+            session.delete(award)
+            session.commit()
+            session.close()
+
+            await ctx.send(embed=SuccessfulMessage(f"Вы удалили роль `{role.name}` из списка наград за уровень"))
+
+    @awards_for_levels.command(name="reset")
+    @level_awards_exists()
+    async def reset_awards_for_levels(self, ctx):
+        """
+        Удалить все роли в качестве награды за уровень
+        """
+
+        session = Session()
+        session.query(ServerAwardOfLevels).filter_by(server_id=str(ctx.guild.id)).delete()
+        session.commit()
+        session.close()
+
+        await ctx.send(embed=SuccessfulMessage(f"Вы удалили все награды за уровень"))
 
 
 def setup(bot):

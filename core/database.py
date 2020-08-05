@@ -71,3 +71,11 @@ class ServerSettingsOfLevels(Base):
     levelup_message_dm = Column(Boolean, default=False, nullable=False)
     levelup_message_channel_id = Column(String(32), server_default=None)
     levelup_message = Column(String(256), default=None)
+
+
+class ServerAwardOfLevels(Base):
+    __tablename__ = "servers_awards_of_levels"
+
+    server_id = Column(String(32), primary_key=True)
+    role_id = Column(String(32), primary_key=True)
+    level = Column(Integer)
