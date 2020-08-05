@@ -334,9 +334,7 @@ class Level(commands.Cog, name="Уровни"):
 
         await ctx.send(embed=message)
 
-    @commands.command(
-        cls=BotCommand, name="leaders"
-    )
+    @commands.command(cls=BotCommand, name="leaders")
     @level_system_is_on()
     async def get_leaders_on_server(self, ctx):
         """
@@ -602,6 +600,8 @@ class Level(commands.Cog, name="Уровни"):
 
         if text is None:
             raise CommandError("Вы не ввели текст")
+        elif len(text) > 256:
+            raise CommandError("Вы не можете поставить текст больше 256 символов")
         else:
             settings.levelup_message = text
 
