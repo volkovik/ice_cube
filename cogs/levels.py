@@ -200,6 +200,11 @@ class Level(commands.Cog, name="Уровни"):
 
     @commands.Cog.listener(name="on_message")
     async def when_message(self, message):
+        context = await self.client.get_context(message)
+
+        if context.valid:
+            return
+
         user = message.author
 
         if user.bot or message.channel.type is discord.ChannelType.private:
