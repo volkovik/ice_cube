@@ -80,58 +80,65 @@ def format_levelup_message(text, ctx, level):
         level=level
     )
 
+# Проверки для команд
 
-def level_system_is_enabled(ctx):
-    """
-    Проверка, включёна ли система уровней на сервере
 
-    :param ctx: информация о сообщении
-    :type ctx: discord.Context or discord.Message
-    :return: True, если включена, иначе False
-    :rtype: bool
-    """
-
-    session = Session()
+def level_system_is_enabled(session, ctx):
     server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
-    session.close()
 
     return server_settings is not None
 
 
 def level_system_is_on():
-    """
-    Декоратор для discord.Command, с проверкой, включен ли рейтинг участников на сервере
-    """
+    def decorator(ctx):
+        session = Session()
+        is_on = level_system_is_enabled(session, ctx)
+        session.close()
 
-    return commands.check(level_system_is_enabled)
+        return is_on
+
+    return commands.check(decorator)
 
 
 def level_system_is_off():
-    """
-    Декоратор для discord.Command, с проверкой, выключен ли рейтинг участников на сервере
-    """
-
     def predicate(ctx):
-        return not level_system_is_enabled(ctx)
+        session = Session()
+        is_off = not level_system_is_enabled(session, ctx)
+        session.close()
+
+        return is_off
 
     return commands.check(predicate)
 
 
-def notify_of_levelup_is_enabled(ctx):
-    session = Session()
+def notify_of_levelup_is_enabled(session, ctx):
     server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
-    session.close()
 
     return server_settings.notify_of_levelup
 
 
 def notify_of_levelup_is_on():
-    return commands.check(notify_of_levelup_is_enabled)
+    def predicate(ctx):
+        session = Session()
+        if not level_system_is_enabled(session, ctx):
+            return False
+        is_on = notify_of_levelup_is_enabled(session, ctx)
+        session.close()
+
+        return is_on
+
+    return commands.check(predicate)
 
 
 def notify_of_levelup_is_off():
     def predicate(ctx):
-        return not notify_of_levelup_is_enabled(ctx)
+        session = Session()
+        if not level_system_is_enabled(session, ctx):
+            return False
+        is_off = not notify_of_levelup_is_enabled(session, ctx)
+        session.close()
+
+        return is_off
 
     return commands.check(predicate)
 
@@ -139,6 +146,8 @@ def notify_of_levelup_is_off():
 def levelup_message_is_custom():
     def predicate(ctx):
         session = Session()
+        if not level_system_is_enabled(session, ctx) or not notify_of_levelup_is_enabled(session, ctx):
+            return False
         server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
         session.close()
 
@@ -150,6 +159,8 @@ def levelup_message_is_custom():
 def levelup_message_destination_is_not_dm():
     def predicate(ctx):
         session = Session()
+        if not level_system_is_enabled(session, ctx) or not notify_of_levelup_is_enabled(session, ctx):
+            return False
         server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
         session.close()
 
@@ -161,6 +172,8 @@ def levelup_message_destination_is_not_dm():
 def levelup_message_destination_is_not_current():
     def predicate(ctx):
         session = Session()
+        if not level_system_is_enabled(session, ctx) or not notify_of_levelup_is_enabled(session, ctx):
+            return False
         server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
         session.close()
 
@@ -506,7 +519,6 @@ class Level(commands.Cog, name="Уровни"):
         await ctx.send(embed=embed)
 
     @levelup_message.command(name="enable")
-    @level_system_is_on()
     @notify_of_levelup_is_off()
     async def enable_notify_of_levelup(self, ctx):
         """
@@ -522,7 +534,6 @@ class Level(commands.Cog, name="Уровни"):
         await ctx.send(embed=SuccessfulMessage("Вы включили оповещение о новом уровне пользователя"))
 
     @levelup_message.command(name="disable")
-    @level_system_is_on()
     @notify_of_levelup_is_on()
     async def disable_notify_of_levelup(self, ctx):
         """
@@ -542,7 +553,6 @@ class Level(commands.Cog, name="Уровни"):
         usage={"текст": ("текст, который будет отправляться по достижению нового уровня пользователем", True)}
     )
     @notify_of_levelup_is_on()
-    @level_system_is_on()
     async def edit_levelup_message(self, ctx, *, text=None):
         """
         Редактировать текст сообщения
@@ -562,8 +572,6 @@ class Level(commands.Cog, name="Уровни"):
         await ctx.send(embed=SuccessfulMessage("Вы изменили текст сообщения"))
 
     @edit_levelup_message.command(cls=BotCommand, name="default")
-    @level_system_is_on()
-    @notify_of_levelup_is_on()
     @levelup_message_is_custom()
     async def reset_levelup_message(self, ctx):
         """
@@ -583,7 +591,6 @@ class Level(commands.Cog, name="Уровни"):
         usage={"канал": ("упоминание, ID или название текстового канала", True)}
     )
     @notify_of_levelup_is_on()
-    @level_system_is_on()
     async def edit_levelup_message_destination(self, ctx, channel=None):
         """
         Изменить канал, где присылаются сообщения о получении нового уровня пользователями
@@ -616,8 +623,6 @@ class Level(commands.Cog, name="Уровни"):
         session.close()
 
     @edit_levelup_message_destination.command(name="dm")
-    @level_system_is_on()
-    @notify_of_levelup_is_on()
     @levelup_message_destination_is_not_dm()
     async def set_levelup_message_destination_as_user_dm(self, ctx):
         """
@@ -637,8 +642,6 @@ class Level(commands.Cog, name="Уровни"):
                                                "пользователю"))
 
     @edit_levelup_message_destination.command(name="current")
-    @level_system_is_on()
-    @notify_of_levelup_is_on()
     @levelup_message_destination_is_not_current()
     async def set_levelup_message_destination_as_channel_where_reached_new_level(self, ctx):
         """
