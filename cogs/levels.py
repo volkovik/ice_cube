@@ -117,6 +117,25 @@ def level_system_is_off():
     return commands.check(predicate)
 
 
+def notify_of_levelup_is_enabled(ctx):
+    session = Session()
+    server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+    session.close()
+
+    return server_settings.notify_of_levelup
+
+
+def notify_of_levelup_is_on():
+    return commands.check(notify_of_levelup_is_enabled)
+
+
+def notify_of_levelup_is_off():
+    def predicate(ctx):
+        return not notify_of_levelup_is_enabled(ctx)
+
+    return commands.check(predicate)
+
+
 def levelup_message_is_custom():
     def predicate(ctx):
         session = Session()
@@ -196,7 +215,7 @@ class Level(commands.Cog, name="Уровни"):
 
                 next_level = get_level(before_exp) + 1
 
-                if get_experience(next_level) <= user_db.experience:
+                if get_experience(next_level) <= user_db.experience and server_settings.notify_of_levelup:
                     if server_settings.levelup_message is not None:
                         text = server_settings.levelup_message
                     else:
@@ -424,27 +443,31 @@ class Level(commands.Cog, name="Уровни"):
         settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(server.id)).first()
         session.close()
 
-        if settings.levelup_message_dm:
-            where_sends = "**Данное сообщение присылается в ЛС пользователю, получивший новый уровень**"
+        if not settings.notify_of_levelup:
+            where_sends = "**Оповещение о новом уровне выключено**\n" \
+                          "Чтобы включить оповещение, используйте команду `.setlevels message send enable`"
         else:
-            if settings.levelup_message_channel_id is None:
-                channel = None
+            if settings.levelup_message_dm:
+                where_sends = "**Данное сообщение присылается в ЛС пользователю, получивший новый уровень**"
             else:
-                channel = server.get_channel(int(settings.levelup_message_channel_id))
+                if settings.levelup_message_channel_id is None:
+                    channel = None
+                else:
+                    channel = server.get_channel(int(settings.levelup_message_channel_id))
 
-            if channel is None:
-                settings.levelup_message_channel_id = None
-                session.commit()
+                if channel is None:
+                    settings.levelup_message_channel_id = None
+                    session.commit()
 
-                where_sends = f"**Данное сообщение присылается в том же канеле, где пользователь получил новый " \
-                              f"уровень**"
-            else:
-                where_sends = f"**Данное сообщение присылается в {channel.mention}, если пользователь получил новый " \
-                              f"уровень**"
+                    where_sends = f"**Данное сообщение присылается в том же канеле, где пользователь получил новый " \
+                                  f"уровень**"
+                else:
+                    where_sends = f"**Данное сообщение присылается в {channel.mention}, если пользователь получил " \
+                                  f"новый уровень**"
 
-        where_sends += f"\nВы можете изменить место отправки этого сообщение, используя команду " \
-                       f"`{ctx.prefix}setlevels message send`. Подробнее о команде: " \
-                       f"`{ctx.prefix}help setlevels message send`\n"
+            where_sends += f"\nВы можете изменить место отправки этого сообщение, используя команду " \
+                           f"`{ctx.prefix}setlevels message send`. Подробнее о команде: " \
+                           f"`{ctx.prefix}help setlevels message send`\n"
 
         if settings.levelup_message is None:
             if settings.levelup_message_dm:
@@ -482,10 +505,43 @@ class Level(commands.Cog, name="Уровни"):
 
         await ctx.send(embed=embed)
 
+    @levelup_message.command(name="enable")
+    @level_system_is_on()
+    @notify_of_levelup_is_off()
+    async def enable_notify_of_levelup(self, ctx):
+        """
+        Включить оповещение о новом уровне пользователя
+        """
+
+        session = Session()
+        settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+        settings.notify_of_levelup = True
+        session.commit()
+        session.close()
+
+        await ctx.send(embed=SuccessfulMessage("Вы включили оповещение о новом уровне пользователя"))
+
+    @levelup_message.command(name="disable")
+    @level_system_is_on()
+    @notify_of_levelup_is_on()
+    async def disable_notify_of_levelup(self, ctx):
+        """
+        Выключить оповещение о новом уровне пользователя
+        """
+
+        session = Session()
+        settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+        settings.notify_of_levelup = False
+        session.commit()
+        session.close()
+
+        await ctx.send(embed=SuccessfulMessage("Вы выключили оповещение о новом уровне пользователя"))
+
     @levelup_message.group(
         cls=BotGroupCommands, name="edit", invoke_without_command=True,
         usage={"текст": ("текст, который будет отправляться по достижению нового уровня пользователем", True)}
     )
+    @notify_of_levelup_is_on()
     @level_system_is_on()
     async def edit_levelup_message(self, ctx, *, text=None):
         """
@@ -507,6 +563,7 @@ class Level(commands.Cog, name="Уровни"):
 
     @edit_levelup_message.command(cls=BotCommand, name="default")
     @level_system_is_on()
+    @notify_of_levelup_is_on()
     @levelup_message_is_custom()
     async def reset_levelup_message(self, ctx):
         """
@@ -525,6 +582,7 @@ class Level(commands.Cog, name="Уровни"):
         cls=BotGroupCommands, name="send", invoke_without_command=True,
         usage={"канал": ("упоминание, ID или название текстового канала", True)}
     )
+    @notify_of_levelup_is_on()
     @level_system_is_on()
     async def edit_levelup_message_destination(self, ctx, channel=None):
         """
@@ -559,6 +617,7 @@ class Level(commands.Cog, name="Уровни"):
 
     @edit_levelup_message_destination.command(name="dm")
     @level_system_is_on()
+    @notify_of_levelup_is_on()
     @levelup_message_destination_is_not_dm()
     async def set_levelup_message_destination_as_user_dm(self, ctx):
         """
@@ -579,6 +638,7 @@ class Level(commands.Cog, name="Уровни"):
 
     @edit_levelup_message_destination.command(name="current")
     @level_system_is_on()
+    @notify_of_levelup_is_on()
     @levelup_message_destination_is_not_current()
     async def set_levelup_message_destination_as_channel_where_reached_new_level(self, ctx):
         """
