@@ -339,6 +339,10 @@ class Level(commands.Cog, name="Уровни"):
     )
     @level_system_is_on()
     async def get_leaders_on_server(self, ctx):
+        """
+        Топ участников по уровню на сервере
+        """
+
         server = ctx.guild
 
         session = Session()
