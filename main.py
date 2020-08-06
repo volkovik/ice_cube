@@ -30,7 +30,7 @@ logging.basicConfig(
     datefmt=date_format
 )
 
-logger = logging.getLogger("ice_cube.db")
+logger = logging.getLogger("ice_cube")
 logger.setLevel(logging.INFO)
 discord_logger = logging.getLogger("discord")
 discord_logger.setLevel(logging.INFO)
