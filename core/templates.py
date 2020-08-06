@@ -1,8 +1,53 @@
 import discord
+import asyncio
 from enum import Enum
 from itertools import groupby
 from discord import Embed
+from discord.ext import commands
 from discord.ext.commands import HelpCommand
+
+
+async def send_message_with_reaction_choice(client: commands.Bot, ctx: commands.Context, embed: Embed, emojis: dict):
+    """
+    Прислать сообщение с выбором ответа в виде реакций
+
+    :param client: бот
+    :type client: commands.Bot
+    :param ctx: информация о сообщении
+    :type ctx: commands.Context
+    :param embed: Embed интерфейс
+    :type embed: Embed
+    :param emojis: словарь со эмоджи
+    :type emojis: dict
+    :return: сообщение и выбор пользователя
+    :rtype: discord.Message and str
+    """
+
+    message = await ctx.send(embed=embed)
+
+    for e in emojis.values():
+        await message.add_reaction(e)
+
+    def check(react, user):
+        return ctx.author == user and str(react) in emojis.values()
+
+    try:
+        reaction, _ = await client.wait_for('reaction_add', timeout=60.0, check=check)
+    except asyncio.TimeoutError:
+        await message.clear_reactions()
+        await message.edit(embed=ErrorMessage("Превышено время ожидания"))
+        return message, None
+    else:
+        await message.clear_reactions()
+
+        answer = None
+
+        for k, v in emojis.items():
+            if v == str(reaction.emoji):
+                answer = k
+                break
+
+        return message, answer
 
 
 class PermissionsForRoom(Enum):
