@@ -3,12 +3,11 @@ import asyncio
 from discord import Status
 from discord.ext import commands
 from discord.ext.commands import CommandError
-from sqlalchemy.orm import sessionmaker
 
 from main import Session, __version__
 from core.database import User, UserScoreToAnotherUser
 from core.commands import BotCommand, BotGroupCommands
-from core.templates import SuccessfulMessage, ErrorMessage
+from core.templates import SuccessfulMessage, ErrorMessage, send_message_with_reaction_choice
 from core.converts import convert_status, convert_activity_type, convert_voice_region, convert_verification_level
 
 
@@ -132,8 +131,6 @@ class Information(commands.Cog, name="Информация"):
         elif user.bot:
             raise CommandError("Вы не можете оценить бота")
 
-        timeout_message = ErrorMessage("Превышено время ожидания")
-
         session = Session()
 
         db_kwargs = {
@@ -144,49 +141,36 @@ class Information(commands.Cog, name="Информация"):
         user_score_from_db = session.query(UserScoreToAnotherUser).filter_by(**db_kwargs).first()
 
         emojis = {
-            "up": "<:up:737302701846560818>",
-            "down": "<:down:737302708574486558>",
-            "cancel": "🚫"
+            "up": "⬆️",
+            "down": "⬇️"
         }
 
-        def check(reaction, user):
-            return ctx.author == user and str(reaction) in emojis.values()
-
         if user_score_from_db is None:
+            emojis["cancel"] = "🚫"
             embed = discord.Embed(
                 title="Выберите оценку пользователю",
                 description=f"{emojis['up']} - Положительная {emojis['down']} - Отрицательная\n\n"
                             f"{emojis['cancel']} - Отменить оценку пользователю"
             )
 
-            message = await ctx.send(embed=embed)
+            message, answer = await send_message_with_reaction_choice(self.client, ctx, embed, emojis)
 
-            await message.add_reaction(emojis["up"])
-            await message.add_reaction(emojis["down"])
-            await message.add_reaction(emojis["cancel"])
-
-            try:
-                reaction, _ = await self.client.wait_for('reaction_add', timeout=60.0, check=check)
-            except asyncio.TimeoutError:
-                await message.edit(embed=timeout_message)
-                await message.clear_reactions()
-            else:
-                if str(reaction) == emojis["up"]:
-                    session.add(UserScoreToAnotherUser(**db_kwargs, score=True))
-                    await message.edit(embed=SuccessfulMessage(f"Вы поставили положительную оценку "
-                                                               f"`{user.display_name}`"))
-                elif str(reaction) == emojis["down"]:
-                    session.add(UserScoreToAnotherUser(**db_kwargs, score=False))
-                    await message.edit(embed=SuccessfulMessage(f"Вы поставили отрицательную оценку "
-                                                               f"`{user.display_name}`"))
-                else:
-                    await message.edit(embed=discord.Embed(
-                        title=":x: Отменено",
-                        description="Вы отменили оценку пользователю",
-                        color=0xDD2E44
-                    ))
-
-                await message.clear_reactions()
+            if answer == "up":
+                session.add(UserScoreToAnotherUser(**db_kwargs, score=True))
+                session.commit()
+                await message.edit(embed=SuccessfulMessage(f"Вы поставили положительную оценку "
+                                                           f"`{user.display_name}`"))
+            elif answer == "down":
+                session.add(UserScoreToAnotherUser(**db_kwargs, score=False))
+                session.commit()
+                await message.edit(embed=SuccessfulMessage(f"Вы поставили отрицательную оценку "
+                                                           f"`{user.display_name}`"))
+            elif answer == "cancel":
+                await message.edit(embed=discord.Embed(
+                    title=":x: Отменено",
+                    description="Вы отменили оценку пользователю",
+                    color=0xDD2E44
+                ))
         else:
             cancelled_message = discord.Embed(
                 title=":x: Отменено",
@@ -195,6 +179,7 @@ class Information(commands.Cog, name="Информация"):
             )
 
             emojis["remove"] = "❌"
+            emojis["cancel"] = "🚫"
 
             if user_score_from_db.score is True:
                 del emojis["up"]
@@ -207,29 +192,19 @@ class Information(commands.Cog, name="Информация"):
                                 f"{emojis['cancel']} - Отменить изменение оценки пользователю"
                 )
 
-                message = await ctx.send(embed=embed)
+                message, answer = await send_message_with_reaction_choice(self.client, ctx, embed, emojis)
 
-                await message.add_reaction(emojis["down"])
-                await message.add_reaction(emojis["remove"])
-                await message.add_reaction(emojis["cancel"])
-
-                try:
-                    reaction, _ = await self.client.wait_for('reaction_add', timeout=60.0, check=check)
-                except asyncio.TimeoutError:
-                    await message.edit(embed=timeout_message)
-                    await message.clear_reactions()
-                else:
-                    if str(reaction) == emojis["down"]:
-                        user_score_from_db.score = False
-                        await message.edit(embed=SuccessfulMessage(f"Вы изменили вашу оценку на отрицательную "
-                                                                   f"`{user.display_name}`"))
-                    elif str(reaction) == emojis["remove"]:
-                        session.delete(user_score_from_db)
-                        await message.edit(embed=SuccessfulMessage(f"Вы удалили оценку `{user.display_name}`"))
-                    else:
-                        await message.edit(embed=cancelled_message)
-
-                    await message.clear_reactions()
+                if answer == "down":
+                    user_score_from_db.score = False
+                    session.commit()
+                    await message.edit(embed=SuccessfulMessage(f"Вы изменили вашу оценку на отрицательную "
+                                                               f"`{user.display_name}`"))
+                elif answer == "remove":
+                    session.delete(user_score_from_db)
+                    session.commit()
+                    await message.edit(embed=SuccessfulMessage(f"Вы удалили оценку `{user.display_name}`"))
+                elif answer == "cancel":
+                    await message.edit(embed=cancelled_message)
             else:
                 del emojis["down"]
 
@@ -241,31 +216,20 @@ class Information(commands.Cog, name="Информация"):
                                 f"{emojis['cancel']} - Отменить изменение оценки пользователю"
                 )
 
-                message = await ctx.send(embed=embed)
+                message, answer = await send_message_with_reaction_choice(self.client, ctx, embed, emojis)
 
-                await message.add_reaction(emojis["up"])
-                await message.add_reaction(emojis["remove"])
-                await message.add_reaction(emojis["cancel"])
+                if answer == "up":
+                    user_score_from_db.score = True
+                    session.commit()
+                    await message.edit(embed=SuccessfulMessage(f"Вы изменили вашу оценку на положительную "
+                                                               f"`{user.display_name}`"))
+                elif answer == "remove":
+                    session.delete(user_score_from_db)
+                    session.commit()
+                    await message.edit(embed=SuccessfulMessage(f"Вы удалили оценку `{user.display_name}`"))
+                elif answer == "cancel":
+                    await message.edit(embed=cancelled_message)
 
-                try:
-                    reaction, _ = await self.client.wait_for('reaction_add', timeout=60.0, check=check)
-                except asyncio.TimeoutError:
-                    await message.edit(embed=timeout_message)
-                    await message.clear_reactions()
-                else:
-                    if str(reaction) == emojis["up"]:
-                        user_score_from_db.score = True
-                        await message.edit(embed=SuccessfulMessage(f"Вы изменили вашу оценку на положительную "
-                                                                   f"`{user.display_name}`"))
-                    elif str(reaction) == emojis["remove"]:
-                        session.delete(user_score_from_db)
-                        await message.edit(embed=SuccessfulMessage(f"Вы удалили оценку `{user.display_name}`"))
-                    else:
-                        await message.edit(embed=cancelled_message)
-
-                    await message.clear_reactions()
-
-        session.commit()
         session.close()
 
     @set_reputation_for_user.command(
