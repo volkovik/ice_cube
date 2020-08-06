@@ -230,6 +230,17 @@ class Help(HelpCommand):
 
         return f"Я не нашёл команду `{name}`"
 
+    async def subcommand_not_found(self, command, string):
+        """
+        Текст ошибки, при ненахождении введённой сабкоманды
+
+        :param command: команда
+        :param string: название ошибочной сабкоманды, которую пытались вызвать
+        :return: сообщение об ошибке
+        """
+
+        return f"Команда `{command.qualified_name} {string}` не найдена"
+
     async def send_error_message(self, error):
         """
         Отправка ошибок, вызванные использованием команды
