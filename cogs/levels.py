@@ -251,13 +251,15 @@ class Level(commands.Cog, name="Уровни"):
                     roles = []
 
                     if awards is not None:
+                        higher_bot_role = server.me.roles[-1]
+
                         for award in awards:
                             role = server.get_role(int(award.role_id))
 
                             if role is None:
                                 session.delete(award)
                                 session.commit()
-                            else:
+                            elif role < higher_bot_role:
                                 roles.append(role)
 
                     await user.add_roles(*roles)
@@ -712,7 +714,10 @@ class Level(commands.Cog, name="Уровни"):
         awards = session.query(ServerAwardOfLevels).filter_by(server_id=str(server.id)).all()
         session.close()
 
+        higher_bot_role = server.me.roles[-1]
+
         sorted_awards = {}
+        unavailable_awards = []
 
         for award in awards:
             role = server.get_role(int(award.role_id))
@@ -722,22 +727,35 @@ class Level(commands.Cog, name="Уровни"):
                 session.commit()
                 continue
 
-            if award.level in sorted_awards:
-                sorted_awards[award.level].append(f"`{role.name}`")
+            if role > higher_bot_role:
+                unavailable_awards.append(f"`{role.name}`")
             else:
-                sorted_awards[award.level] = [f"`{role.name}`"]
+                if award.level in sorted_awards:
+                    sorted_awards[award.level].append(f"`{role.name}`")
+                else:
+                    sorted_awards[award.level] = [f"`{role.name}`"]
 
         if sorted_awards:
             text = "\n".join([f"`{level} уровень`: {', '.join(roles)}" for level, roles in sorted_awards.items()])
         else:
-            text = f"**Здесь ничего нет**\n\n" \
-                   f"Вы можете добавить роль в качестве награды за достижение определённого уровня пользователем, " \
-                   f"используя команду `.setlevels award add`"
+            text = f"**Здесь ничего нет**"
+
+            if not unavailable_awards:
+                text += f"\n\nВы можете добавить роль в качестве награды за достижение определённого уровня " \
+                        f"пользователем, используя команду `.setlevels award add`"
 
         embed = discord.Embed(
             title="Награды за получение уровня",
             description=text
         )
+
+        if unavailable_awards:
+            embed.add_field(
+                name="Недоступные роли",
+                value=", ".join(unavailable_awards) +
+                      "\n\nДанные роли не могут быть выданы ботом другим пользователям. Поставьте роль бота выше этих "
+                      "ролей или удалите их с помощью команды `.setlevels award remove`"
+            )
 
         await ctx.send(embed=embed)
 
@@ -756,21 +774,31 @@ class Level(commands.Cog, name="Уровни"):
 
         if role is None:
             raise CommandError("Вы не ввели роль")
-        elif level is None:
-            raise CommandError("Вы не ввели уровень")
+
+        server = ctx.guild
 
         session = Session()
         db_kwargs = {
-            "server_id": str(ctx.guild.id),
+            "server_id": str(server.id),
             "role_id": str(role.id)
         }
         award = session.query(ServerAwardOfLevels).filter_by(**db_kwargs).first()
+
+        higher_bot_role = server.me.roles[-1]
 
         if award is not None:
             session.close()
             raise CommandError("Эта роль уже используется в качестве награды.\n"
                                "Используйте `.setlevels award edit`, если вы хотите изменить её")
+        elif higher_bot_role < role:
+            session.close()
+            raise CommandError("Данная роль выше роли бота. Вы должны поставить роль бота выше, чем эта роль, чтобы "
+                               "бот смог выдавать эту роль другим пользователям")
         else:
+            if level is None:
+                session.close()
+                raise CommandError("Вы не ввели уровень")
+
             award = ServerAwardOfLevels(**db_kwargs, level=level)
             session.add(award)
             session.commit()
