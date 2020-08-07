@@ -1,6 +1,5 @@
 import discord
 import datetime
-import asyncio
 import cmath
 import random
 import sqlalchemy
@@ -11,7 +10,7 @@ from string import Template
 
 from main import Session
 from core.commands import BotCommand, BotGroupCommands
-from core.templates import SuccessfulMessage, ErrorMessage
+from core.templates import SuccessfulMessage, send_message_with_reaction_choice
 from core.database import UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels
 
 
@@ -431,11 +430,9 @@ class Level(commands.Cog, name="Уровни"):
         server = ctx.guild
 
         session = Session()
-
         db_kwargs = {
             "server_id": str(server.id)
         }
-
         server_settings = session.query(ServerSettingsOfLevels).filter_by(**db_kwargs).first()
 
         emojis = {
@@ -450,35 +447,16 @@ class Level(commands.Cog, name="Уровни"):
                         f"{emojis['cancel']} - Нет, отменить выключение"
         )
 
-        message = await ctx.send(embed=embed)
+        message, answer = await send_message_with_reaction_choice(self.client, ctx, embed, emojis)
 
-        await message.add_reaction(emojis["accept"])
-        await message.add_reaction(emojis["cancel"])
+        if answer == "accept":
+            session.delete(server_settings)
+            session.query(UserLevel).filter_by(**db_kwargs).delete()
+            session.commit()
 
-        def check(reaction, user):
-            return ctx.author == user and str(reaction) in emojis.values()
-
-        try:
-            reaction, _ = await self.client.wait_for('reaction_add', timeout=60.0, check=check)
-        except asyncio.TimeoutError:
-            await message.edit(embed=ErrorMessage("Превышено время ожидания"))
-            await message.clear_reactions()
-        else:
-            if str(reaction) == emojis["accept"]:
-                session.delete(server_settings)
-                session.query(UserLevel).filter_by(**db_kwargs).delete()
-                session.commit()
-
-                embed = SuccessfulMessage("Вы выключили рейтинг участников на сервере")
-            else:
-                embed = discord.Embed(
-                    title=":x: Отменено",
-                    description="Вы отменили выключение рейтинга участников на сервере",
-                    color=0xDD2E44
-                )
-
-            await message.edit(embed=embed)
-            await message.clear_reactions()
+            await message.edit(embed=SuccessfulMessage("Вы выключили рейтинг участников на сервере"))
+        elif answer == "cancel":
+            await message.edit(embed=SuccessfulMessage("Вы отменили выключение рейтинга участников"))
 
         session.close()
 
@@ -890,11 +868,31 @@ class Level(commands.Cog, name="Уровни"):
         """
 
         session = Session()
-        session.query(ServerAwardOfLevels).filter_by(server_id=str(ctx.guild.id)).delete()
-        session.commit()
-        session.close()
 
-        await ctx.send(embed=SuccessfulMessage(f"Вы удалили все награды за уровень"))
+        emojis = {
+            "accept": "✅",
+            "cancel": "🚫"
+        }
+
+        embed = discord.Embed(
+            title="Удаление всех наград",
+            description=f"Вы уверены, что хотите удалить все роли из списка наград за уровень?\n\n"
+                        f"{emojis['accept']} - Да, выключить\n"
+                        f"{emojis['cancel']} - Нет, отменить выключение"
+        )
+
+        message, answer = await send_message_with_reaction_choice(self.client, ctx, embed, emojis)
+
+        if answer == "accept":
+            session.query(ServerAwardOfLevels).filter_by(server_id=str(ctx.guild.id)).delete()
+            session.commit()
+
+            embed = SuccessfulMessage("Вы удалили все награды за уровень")
+            await message.edit(embed=embed)
+        elif answer == "cancel":
+            await message.edit(embed=SuccessfulMessage("Вы отменили удаление всех наград"))
+
+        session.close()
 
 
 def setup(bot):
