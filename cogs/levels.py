@@ -483,6 +483,7 @@ class Level(commands.Cog, name="Уровни"):
         session.close()
 
     @levels_settings.group(name="message", invoke_without_command=True)
+    @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def levelup_message(self, ctx):
         """
@@ -558,6 +559,7 @@ class Level(commands.Cog, name="Уровни"):
         await ctx.send(embed=embed)
 
     @levelup_message.command(name="enable")
+    @commands.has_permissions(administrator=True)
     @notify_of_levelup_is_off()
     async def enable_notify_of_levelup(self, ctx):
         """
@@ -573,6 +575,7 @@ class Level(commands.Cog, name="Уровни"):
         await ctx.send(embed=SuccessfulMessage("Вы включили оповещение о новом уровне пользователя"))
 
     @levelup_message.command(name="disable")
+    @commands.has_permissions(administrator=True)
     @notify_of_levelup_is_on()
     async def disable_notify_of_levelup(self, ctx):
         """
@@ -591,6 +594,7 @@ class Level(commands.Cog, name="Уровни"):
         cls=BotGroupCommands, name="edit", invoke_without_command=True,
         usage={"текст": ("текст, который будет отправляться по достижению нового уровня пользователем", True)}
     )
+    @commands.has_permissions(administrator=True)
     @notify_of_levelup_is_on()
     async def edit_levelup_message(self, ctx, *, text=None):
         """
@@ -613,6 +617,7 @@ class Level(commands.Cog, name="Уровни"):
         await ctx.send(embed=SuccessfulMessage("Вы изменили текст сообщения"))
 
     @edit_levelup_message.command(cls=BotCommand, name="default")
+    @commands.has_permissions(administrator=True)
     @levelup_message_is_custom()
     async def reset_levelup_message(self, ctx):
         """
@@ -631,6 +636,7 @@ class Level(commands.Cog, name="Уровни"):
         cls=BotGroupCommands, name="send", invoke_without_command=True,
         usage={"канал": ("упоминание, ID или название текстового канала", True)}
     )
+    @commands.has_permissions(administrator=True)
     @notify_of_levelup_is_on()
     async def edit_levelup_message_destination(self, ctx, channel=None):
         """
@@ -664,6 +670,7 @@ class Level(commands.Cog, name="Уровни"):
         session.close()
 
     @edit_levelup_message_destination.command(name="dm")
+    @commands.has_permissions(administrator=True)
     @levelup_message_destination_is_not_dm()
     async def set_levelup_message_destination_as_user_dm(self, ctx):
         """
@@ -683,6 +690,7 @@ class Level(commands.Cog, name="Уровни"):
                                                "пользователю"))
 
     @edit_levelup_message_destination.command(name="current")
+    @commands.has_permissions(administrator=True)
     @levelup_message_destination_is_not_current()
     async def set_levelup_message_destination_as_channel_where_reached_new_level(self, ctx):
         """
@@ -702,6 +710,7 @@ class Level(commands.Cog, name="Уровни"):
                                                "где пользователь достиг нового уровня"))
 
     @levels_settings.group(name="award", invoke_without_command=True)
+    @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def awards_for_levels(self, ctx):
         """
@@ -766,6 +775,7 @@ class Level(commands.Cog, name="Уровни"):
             "уровень": ("по достижению этого уровня, пользователь получит роль", True)
         }
     )
+    @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def add_award_for_level(self, ctx, role: commands.RoleConverter = None, level: int = None):
         """
@@ -814,6 +824,7 @@ class Level(commands.Cog, name="Уровни"):
             "уровень": ("по достижению этого уровня, пользователь получит роль", True)
         }
     )
+    @commands.has_permissions(administrator=True)
     @level_awards_exists()
     async def edit_award_for_level(self, ctx, role: commands.RoleConverter = None, level: int = None):
         """
@@ -847,6 +858,7 @@ class Level(commands.Cog, name="Уровни"):
         cls=BotCommand, name="remove",
         usage={"роль": ("упоминание, ID или название текстового канала", True)}
     )
+    @commands.has_permissions(administrator=True)
     @level_awards_exists()
     async def remove_award_for_level(self, ctx, role: commands.RoleConverter = None):
         """
@@ -870,6 +882,7 @@ class Level(commands.Cog, name="Уровни"):
             await ctx.send(embed=SuccessfulMessage(f"Вы удалили роль `{role.name}` из списка наград за уровень"))
 
     @awards_for_levels.command(name="reset")
+    @commands.has_permissions(administrator=True)
     @level_awards_exists()
     async def reset_awards_for_levels(self, ctx):
         """
