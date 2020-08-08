@@ -11,7 +11,7 @@ from string import Template
 from main import Session
 from core.commands import BotCommand, BotGroupCommands
 from core.templates import SuccessfulMessage, send_message_with_reaction_choice
-from core.database import UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels
+from core.database import UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels, ServerIgnoreChannelsListOfLevels
 
 
 DEFAULT_LEVELUP_MESSAGE_FOR_SERVER = "$member_mention получил `$level уровень`"
@@ -83,9 +83,7 @@ def format_levelup_message(text, ctx, level):
 
 
 def level_system_is_enabled(session, ctx):
-    server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
-
-    return server_settings is not None
+    return session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first() is not None
 
 
 def level_system_is_on():
@@ -111,9 +109,9 @@ def level_system_is_off():
 
 
 def notify_of_levelup_is_enabled(session, ctx):
-    server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+    settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
 
-    return server_settings.notify_of_levelup
+    return settings.notify_of_levelup if settings is not None else False
 
 
 def notify_of_levelup_is_on():
@@ -145,12 +143,12 @@ def notify_of_levelup_is_off():
 def levelup_message_is_custom():
     def predicate(ctx):
         session = Session()
-        if not level_system_is_enabled(session, ctx) or not notify_of_levelup_is_enabled(session, ctx):
+        if not (level_system_is_enabled(session, ctx) and notify_of_levelup_is_enabled(session, ctx)):
             return False
-        server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+        settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
         session.close()
 
-        return server_settings.levelup_message is not None
+        return settings.levelup_message is not None if settings is not None else False
 
     return commands.check(predicate)
 
@@ -158,12 +156,12 @@ def levelup_message_is_custom():
 def levelup_message_destination_is_not_dm():
     def predicate(ctx):
         session = Session()
-        if not level_system_is_enabled(session, ctx) or not notify_of_levelup_is_enabled(session, ctx):
+        if not (level_system_is_enabled(session, ctx) and notify_of_levelup_is_enabled(session, ctx)):
             return False
-        server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+        settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
         session.close()
 
-        return not server_settings.levelup_message_dm
+        return not settings.levelup_message_dm if settings is not None else False
 
     return commands.check(predicate)
 
@@ -173,10 +171,11 @@ def levelup_message_destination_is_not_current():
         session = Session()
         if not level_system_is_enabled(session, ctx) or not notify_of_levelup_is_enabled(session, ctx):
             return False
-        server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+        settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
         session.close()
 
-        return server_settings.levelup_message_channel_id is not None or server_settings.levelup_message_dm
+        return settings.levelup_message_channel_id is not None or settings.levelup_message_dm \
+            if settings is not None else False
 
     return commands.check(predicate)
 
@@ -186,8 +185,23 @@ def level_awards_exists():
         session = Session()
         if not level_system_is_enabled(session, ctx):
             return False
-        server_awards = session.query(ServerAwardOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
-        return True if server_awards is not None else False
+        award = session.query(ServerAwardOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+        session.close()
+
+        return award is not None
+
+    return commands.check(predicate)
+
+
+def channels_in_ignore_list_exists():
+    def predicate(ctx):
+        session = Session()
+        if not level_system_is_enabled(session, ctx):
+            return False
+        ignored = session.query(ServerIgnoreChannelsListOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+        session.close()
+
+        return ignored is not None
 
     return commands.check(predicate)
 
@@ -215,6 +229,13 @@ class Level(commands.Cog, name="Уровни"):
         server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(server.id)).first()
 
         if server_settings is not None:
+            ignored_channels = session.query(ServerIgnoreChannelsListOfLevels).filter_by(server_id=str(server.id)).all()
+
+            for ignored in ignored_channels:
+                if str(message.channel.id) == ignored.channel_id:
+                    session.close()
+                    return
+
             if self._buckets.valid:
                 current = message.created_at.replace(tzinfo=datetime.timezone.utc).timestamp()
                 bucket = self._buckets.get_bucket(message, current)
@@ -893,6 +914,134 @@ class Level(commands.Cog, name="Уровни"):
             await message.edit(embed=SuccessfulMessage("Вы отменили удаление всех наград"))
 
         session.close()
+
+    @levels_settings.group(name="ignore", invoke_without_command=True)
+    @commands.has_permissions(administrator=True)
+    @level_system_is_on()
+    async def ignore_list(self, ctx):
+        """
+        Настройка чёрного списка
+        """
+
+        server = ctx.guild
+
+        session = Session()
+        ignored_channels = session.query(ServerIgnoreChannelsListOfLevels).filter_by(server_id=str(server.id)).all()
+        session.close()
+
+        verified_channels = []
+
+        if ignored_channels:
+            for ignored_channel in ignored_channels:
+                channel = server.get_channel(int(ignored_channel.channel_id))
+
+                if channel is not None:
+                    verified_channels.append(f"`{channel.name}`")
+
+        if verified_channels:
+            text = "\n".join(verified_channels)
+        else:
+            text = f"**Здесь ничего нет**"
+
+        embed = discord.Embed(
+            title="Чёрный список"
+        )
+        embed.add_field(
+            name="Тектовые каналы",
+            value=text
+        )
+        embed.add_field(
+            name="Что такое чёрный список?",
+            value=f"Добавляя текстовый канал в чёрный список, пользователи не смогут зарабатывать опыт в этом канале.\n"
+                  f"Используйте `{ctx.prefix}help setlevels ignore`, чтобы узнать, как редактировать чёрный список",
+            inline=False
+        )
+
+        await ctx.send(embed=embed)
+
+    @ignore_list.group(name="channel", invoke_without_command=True)
+    @commands.has_permissions(administrator=True)
+    @level_system_is_on()
+    async def channel_ignore_list(self, ctx):
+        """
+        Настройка чёрного списка для текстовых каналов
+        """
+
+        await ctx.send_help(ctx.command)
+
+    @channel_ignore_list.command(name="add")
+    @commands.has_permissions(administrator=True)
+    @level_system_is_on()
+    async def add_channel_to_ignore_list(self, ctx, channel: commands.TextChannelConverter):
+        """
+        Добавить текстовый канал в чёрный список
+        """
+
+        if channel is None:
+            raise CommandError("Вы не ввели тектовый канал")
+
+        session = Session()
+        db_kwargs = {
+            "server_id": str(ctx.guild.id),
+            "channel_id": str(channel.id)
+        }
+        ignored_channel = session.query(ServerIgnoreChannelsListOfLevels).filter_by(**db_kwargs).first()
+
+        if ignored_channel is not None:
+            session.close()
+            raise CommandError("Данный текстовый канал уже в чёрном списке")
+        else:
+            ignored_channel = ServerIgnoreChannelsListOfLevels(**db_kwargs)
+            session.add(ignored_channel)
+            session.commit()
+            session.close()
+
+            await ctx.send(embed=SuccessfulMessage("Вы добавили текстовый канал в чёрный список"))
+
+    @channel_ignore_list.command(name="remove")
+    @commands.has_permissions(administrator=True)
+    @channels_in_ignore_list_exists()
+    async def remove_channel_from_ignore_list(self, ctx, channel: commands.TextChannelConverter):
+        """
+        Удалить канал из чёрного списка
+        """
+
+        if channel is None:
+            raise CommandError("Вы не ввели тектовый канал")
+
+        session = Session()
+        db_kwargs = {
+            "server_id": str(ctx.guild.id),
+            "channel_id": str(channel.id)
+        }
+        ignored_channel = session.query(ServerIgnoreChannelsListOfLevels).filter_by(**db_kwargs).first()
+
+        if ignored_channel is None:
+            session.close()
+            raise CommandError("Данного текстового канала нет в чёрном списке")
+        else:
+            session.delete(ignored_channel)
+            session.commit()
+            session.close()
+
+            await ctx.send(embed=SuccessfulMessage("Вы удалили текстовый канал из чёрного списка"))
+
+    @channel_ignore_list.command(name="reset")
+    @commands.has_permissions(administrator=True)
+    @channels_in_ignore_list_exists()
+    async def reset_ignore_list_for_channels(self, ctx, channel: commands.TextChannelConverter):
+        """
+        Сбросить чёрный список для текстовых каналов
+        """
+
+        session = Session()
+        session.query(ServerIgnoreChannelsListOfLevels).filter_by(
+            server_id=str(ctx.guild.id), channel_id=str(channel.id)
+        ).delete()
+        session.commit()
+        session.close()
+
+        await ctx.send(embed=SuccessfulMessage("Вы сбросили чёрный список для тектовых каналов"))
 
 
 def setup(bot):

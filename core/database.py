@@ -79,3 +79,10 @@ class ServerAwardOfLevels(Base):
     server_id = Column(String(32), primary_key=True)
     role_id = Column(String(32), primary_key=True)
     level = Column(Integer)
+
+
+class ServerIgnoreChannelsListOfLevels(Base):
+    __tablename__ = "servers_ignore_channels_lists_of_levels"
+
+    server_id = Column(String(32), primary_key=True)
+    channel_id = Column(String(32), primary_key=True)
