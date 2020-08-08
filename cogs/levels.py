@@ -11,7 +11,8 @@ from string import Template
 from main import Session
 from core.commands import BotCommand, BotGroupCommands
 from core.templates import SuccessfulMessage, send_message_with_reaction_choice
-from core.database import UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels, ServerIgnoreChannelsListOfLevels
+from core.database import (UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels, ServerIgnoreChannelsListOfLevels,
+                           ServerIgnoreRolesListOfLevels)
 
 
 DEFAULT_LEVELUP_MESSAGE_FOR_SERVER = "$member_mention получил `$level уровень`"
@@ -118,6 +119,7 @@ def notify_of_levelup_is_on():
     def predicate(ctx):
         session = Session()
         if not level_system_is_enabled(session, ctx):
+            session.close()
             return False
         is_on = notify_of_levelup_is_enabled(session, ctx)
         session.close()
@@ -131,6 +133,7 @@ def notify_of_levelup_is_off():
     def predicate(ctx):
         session = Session()
         if not level_system_is_enabled(session, ctx):
+            session.close()
             return False
         is_off = not notify_of_levelup_is_enabled(session, ctx)
         session.close()
@@ -144,6 +147,7 @@ def levelup_message_is_custom():
     def predicate(ctx):
         session = Session()
         if not (level_system_is_enabled(session, ctx) and notify_of_levelup_is_enabled(session, ctx)):
+            session.close()
             return False
         settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
         session.close()
@@ -157,6 +161,7 @@ def levelup_message_destination_is_not_dm():
     def predicate(ctx):
         session = Session()
         if not (level_system_is_enabled(session, ctx) and notify_of_levelup_is_enabled(session, ctx)):
+            session.close()
             return False
         settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
         session.close()
@@ -170,6 +175,7 @@ def levelup_message_destination_is_not_current():
     def predicate(ctx):
         session = Session()
         if not level_system_is_enabled(session, ctx) or not notify_of_levelup_is_enabled(session, ctx):
+            session.close()
             return False
         settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
         session.close()
@@ -180,10 +186,11 @@ def levelup_message_destination_is_not_current():
     return commands.check(predicate)
 
 
-def level_awards_exists():
+def level_awards_exist():
     def predicate(ctx):
         session = Session()
         if not level_system_is_enabled(session, ctx):
+            session.close()
             return False
         award = session.query(ServerAwardOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
         session.close()
@@ -193,12 +200,27 @@ def level_awards_exists():
     return commands.check(predicate)
 
 
-def channels_in_ignore_list_exists():
+def channels_in_ignore_list_exist():
     def predicate(ctx):
         session = Session()
         if not level_system_is_enabled(session, ctx):
+            session.close()
             return False
         ignored = session.query(ServerIgnoreChannelsListOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
+        session.close()
+
+        return ignored is not None
+
+    return commands.check(predicate)
+
+
+def roles_in_ignore_list_exist():
+    def predicate(ctx):
+        session = Session()
+        if not level_system_is_enabled(session, ctx):
+            session.close()
+            return False
+        ignored = session.query(ServerIgnoreRolesListOfLevels).filter_by(server_id=str(ctx.guild.id)).first()
         session.close()
 
         return ignored is not None
@@ -232,9 +254,32 @@ class Level(commands.Cog, name="Уровни"):
             ignored_channels = session.query(ServerIgnoreChannelsListOfLevels).filter_by(server_id=str(server.id)).all()
 
             for ignored in ignored_channels:
+                channel = server.get_channel(int(ignored.channel_id))
+
+                if channel is not None:
+                    if message.channel == channel:
+                        session.close()
+                        return
+                else:
+                    session.delete(ignored)
+                    session.close()
+
                 if str(message.channel.id) == ignored.channel_id:
                     session.close()
                     return
+
+            ignored_roles = session.query(ServerIgnoreRolesListOfLevels).filter_by(server_id=str(server.id)).all()
+
+            for ignored in ignored_roles:
+                role = server.get_role(int(ignored.role_id))
+
+                if role is not None:
+                    if role in user.roles:
+                        session.close()
+                        return
+                else:
+                    session.delete(ignored)
+                    session.commit()
 
             if self._buckets.valid:
                 current = message.created_at.replace(tzinfo=datetime.timezone.utc).timestamp()
@@ -770,7 +815,7 @@ class Level(commands.Cog, name="Уровни"):
     @awards_for_levels.command(
         cls=BotCommand, name="add",
         usage={
-            "роль": ("упоминание, ID или название текстового канала", True),
+            "роль": ("упоминание, ID или название роли", True),
             "уровень": ("по достижению этого уровня, пользователь получит роль", True)
         }
     )
@@ -819,12 +864,12 @@ class Level(commands.Cog, name="Уровни"):
     @awards_for_levels.command(
         cls=BotCommand, name="edit",
         usage={
-            "роль": ("упоминание, ID или название текстового канала", True),
+            "роль": ("упоминание, ID или название роли", True),
             "уровень": ("по достижению этого уровня, пользователь получит роль", True)
         }
     )
     @commands.has_permissions(administrator=True)
-    @level_awards_exists()
+    @level_awards_exist()
     async def edit_award_for_level(self, ctx, role: commands.RoleConverter = None, level: int = None):
         """
         Редактировать требуемый уровень для получения роли
@@ -858,7 +903,7 @@ class Level(commands.Cog, name="Уровни"):
         usage={"роль": ("упоминание, ID или название текстового канала", True)}
     )
     @commands.has_permissions(administrator=True)
-    @level_awards_exists()
+    @level_awards_exist()
     async def remove_award_for_level(self, ctx, role: commands.RoleConverter = None):
         """
         Удалить роль из списка наград за уровень
@@ -882,7 +927,7 @@ class Level(commands.Cog, name="Уровни"):
 
     @awards_for_levels.command(name="reset")
     @commands.has_permissions(administrator=True)
-    @level_awards_exists()
+    @level_awards_exist()
     async def reset_awards_for_levels(self, ctx):
         """
         Удалить все роли в качестве награды за уровень
@@ -927,32 +972,60 @@ class Level(commands.Cog, name="Уровни"):
 
         session = Session()
         ignored_channels = session.query(ServerIgnoreChannelsListOfLevels).filter_by(server_id=str(server.id)).all()
-        session.close()
+        ignored_roles = session.query(ServerIgnoreRolesListOfLevels).filter_by(server_id=str(server.id)).all()
 
         verified_channels = []
+        verified_roles = []
 
         if ignored_channels:
-            for ignored_channel in ignored_channels:
-                channel = server.get_channel(int(ignored_channel.channel_id))
+            for ignored in ignored_channels:
+                channel = server.get_channel(int(ignored.channel_id))
 
                 if channel is not None:
                     verified_channels.append(f"`{channel.name}`")
+                else:
+                    session.delete(ignored)
+                    session.commit()
+
+        if ignored_roles:
+            for ignored in ignored_roles:
+                role = server.get_role(int(ignored.role_id))
+
+                if role is not None:
+                    verified_roles.append(f"`{role.name}`")
+                else:
+                    session.delete(ignored)
+                    session.commit()
+
+        session.close()
 
         if verified_channels:
-            text = "\n".join(verified_channels)
+            channels_text = "\n".join(verified_channels)
         else:
-            text = f"**Здесь ничего нет**"
+            channels_text = f"**Здесь ничего нет**"
+
+        if verified_roles:
+            roles_text = "\n".join(verified_roles)
+        else:
+            roles_text = f"**Здесь ничего нет**"
 
         embed = discord.Embed(
             title="Чёрный список"
         )
         embed.add_field(
-            name="Тектовые каналы",
-            value=text
+            name="Текстовые каналы",
+            value=channels_text,
+            inline=True
+        )
+        embed.add_field(
+            name="Роли",
+            value=roles_text,
+            inline=True
         )
         embed.add_field(
             name="Что такое чёрный список?",
             value=f"Добавляя текстовый канал в чёрный список, пользователи не смогут зарабатывать опыт в этом канале.\n"
+                  f"Добавляя роль в чёрный список, пользователей с этой ролью не сможет зарабатывать опыт.\n"
                   f"Используйте `{ctx.prefix}help setlevels ignore`, чтобы узнать, как редактировать чёрный список",
             inline=False
         )
@@ -969,7 +1042,10 @@ class Level(commands.Cog, name="Уровни"):
 
         await ctx.send_help(ctx.command)
 
-    @channel_ignore_list.command(name="add")
+    @channel_ignore_list.command(
+        cls=BotCommand, name="add",
+        usage={"канал": ("упоминание, ID или название текстового канала", True)}
+    )
     @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def add_channel_to_ignore_list(self, ctx, channel: commands.TextChannelConverter):
@@ -998,12 +1074,15 @@ class Level(commands.Cog, name="Уровни"):
 
             await ctx.send(embed=SuccessfulMessage("Вы добавили текстовый канал в чёрный список"))
 
-    @channel_ignore_list.command(name="remove")
+    @channel_ignore_list.command(
+        cls=BotCommand, name="remove",
+        usage={"канал": ("упоминание, ID или название текстового канала", True)}
+    )
     @commands.has_permissions(administrator=True)
-    @channels_in_ignore_list_exists()
+    @channels_in_ignore_list_exist()
     async def remove_channel_from_ignore_list(self, ctx, channel: commands.TextChannelConverter):
         """
-        Удалить канал из чёрного списка
+        Удалить текстовый канал из чёрного списка
         """
 
         if channel is None:
@@ -1028,20 +1107,106 @@ class Level(commands.Cog, name="Уровни"):
 
     @channel_ignore_list.command(name="reset")
     @commands.has_permissions(administrator=True)
-    @channels_in_ignore_list_exists()
-    async def reset_ignore_list_for_channels(self, ctx, channel: commands.TextChannelConverter):
+    @channels_in_ignore_list_exist()
+    async def reset_ignore_list_for_channels(self, ctx):
         """
         Сбросить чёрный список для текстовых каналов
         """
 
         session = Session()
-        session.query(ServerIgnoreChannelsListOfLevels).filter_by(
-            server_id=str(ctx.guild.id), channel_id=str(channel.id)
-        ).delete()
+        session.query(ServerIgnoreChannelsListOfLevels).filter_by(server_id=str(ctx.guild.id)).delete()
         session.commit()
         session.close()
 
         await ctx.send(embed=SuccessfulMessage("Вы сбросили чёрный список для тектовых каналов"))
+
+    @ignore_list.group(name="role", invoke_without_command=True)
+    @commands.has_permissions(administrator=True)
+    @level_system_is_on()
+    async def role_ignore_list(self, ctx):
+        """
+        Настройка чёрного списка для ролей
+        """
+
+        await ctx.send_help(ctx.command)
+
+    @role_ignore_list.command(
+        cls=BotCommand, name="add",
+        usage={"роль": ("упоминание, ID или название роли", True)}
+    )
+    @commands.has_permissions(administrator=True)
+    @level_system_is_on()
+    async def add_role_to_ignore_list(self, ctx, role: commands.RoleConverter):
+        """
+        Добавить роль в чёрный список
+        """
+
+        if role is None:
+            raise CommandError("Вы не ввели роль")
+
+        session = Session()
+        db_kwargs = {
+            "server_id": str(ctx.guild.id),
+            "role_id": str(role.id)
+        }
+        ignored_role = session.query(ServerIgnoreRolesListOfLevels).filter_by(**db_kwargs).first()
+
+        if ignored_role is not None:
+            session.close()
+            raise CommandError("Данная роль уже в чёрном списке")
+        else:
+            ignored_role = ServerIgnoreRolesListOfLevels(**db_kwargs)
+            session.add(ignored_role)
+            session.commit()
+            session.close()
+
+            await ctx.send(embed=SuccessfulMessage("Вы добавили роль в чёрный список"))
+
+    @role_ignore_list.command(
+        cls=BotCommand, name="remove",
+        usage={"роль": ("упоминание, ID или название роли", True)}
+    )
+    @commands.has_permissions(administrator=True)
+    @roles_in_ignore_list_exist()
+    async def remove_role_from_ignore_list(self, ctx, role: commands.RoleConverter):
+        """
+        Удалить роль из чёрного списка
+        """
+
+        if role is None:
+            raise CommandError("Вы не ввели роль")
+
+        session = Session()
+        db_kwargs = {
+            "server_id": str(ctx.guild.id),
+            "role_id": str(role.id)
+        }
+        ignored_role = session.query(ServerIgnoreRolesListOfLevels).filter_by(**db_kwargs).first()
+
+        if ignored_role is None:
+            session.close()
+            raise CommandError("Данной роли нет в чёрном списке")
+        else:
+            session.delete(ignored_role)
+            session.commit()
+            session.close()
+
+            await ctx.send(embed=SuccessfulMessage("Вы удалили роль из чёрного списка"))
+
+    @role_ignore_list.command(name="reset")
+    @commands.has_permissions(administrator=True)
+    @roles_in_ignore_list_exist()
+    async def reset_ignore_list_for_roles(self, ctx):
+        """
+        Сбросить чёрный список для ролей
+        """
+
+        session = Session()
+        session.query(ServerIgnoreRolesListOfLevels).filter_by(server_id=str(ctx.guild.id)).delete()
+        session.commit()
+        session.close()
+
+        await ctx.send(embed=SuccessfulMessage("Вы сбросили чёрный список для ролей"))
 
 
 def setup(bot):
