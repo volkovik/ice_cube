@@ -442,6 +442,51 @@ class Level(commands.Cog, name="Уровни"):
 
         await ctx.send(embed=embed)
 
+    @commands.command(
+        cls=BotCommand, name="editlevel",
+        usage={
+            "уровень": ("уровень, который будет поставлен для участника", True),
+            "пользователь": ("упоминание, ID или никнейм пользователя (оставьте пустым, если хотите изменить уровень "
+                             "себе)", True),
+        }
+    )
+    @commands.has_permissions(administrator=True)
+    @level_system_is_on()
+    async def edit_user_level(self, ctx, level: int = None, user: commands.MemberConverter = None):
+        """
+        Изменить уровень пользователя
+        """
+
+        if user is None:
+            user = ctx.author
+
+        if level > 1000:
+            raise CommandError("Вы не можете поставить уровень больше 1000-го")
+        elif level < 0:
+            raise CommandError("Вы не можете поставить уровень меньше нуля")
+
+        session = Session()
+        db_kwargs = {
+            "server_id": str(ctx.guild.id),
+            "user_id": str(user.id)
+        }
+        user_level = session.query(UserLevel).filter_by(**db_kwargs).first()
+
+        if user_level is None:
+            user_level = UserLevel(**db_kwargs)
+            session.add(user_level)
+
+        user_level.experience = get_experience(level)
+        session.commit()
+        session.close()
+
+        if user == ctx.author:
+            await ctx.send(embed=SuccessfulMessage(f"Вы поставили себе `{level} уровень`"))
+        else:
+            await ctx.send(
+                embed=SuccessfulMessage(f"Вы поставили пользователю `{user.display_name}` `{level} уровень`")
+            )
+
     @commands.group(name="setlevels", invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     async def levels_settings(self, ctx):
