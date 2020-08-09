@@ -1,14 +1,68 @@
-import discord
+import asyncio
 from enum import Enum
 from itertools import groupby
 from discord import Embed
+from discord.ext import commands
 from discord.ext.commands import HelpCommand
+
+
+async def send_message_with_reaction_choice(client: commands.Bot, ctx: commands.Context, embed: Embed, emojis: dict):
+    """
+    Прислать сообщение с выбором ответа в виде реакций
+
+    :param client: бот
+    :type client: commands.Bot
+    :param ctx: информация о сообщении
+    :type ctx: commands.Context
+    :param embed: Embed интерфейс
+    :type embed: Embed
+    :param emojis: словарь со эмоджи
+    :type emojis: dict
+    :return: сообщение и выбор пользователя
+    :rtype: discord.Message and str
+    """
+
+    message = await ctx.send(embed=embed)
+
+    for e in emojis.values():
+        await message.add_reaction(e)
+
+    def check(react, user):
+        return ctx.author == user and str(react) in emojis.values()
+
+    try:
+        reaction, _ = await client.wait_for('reaction_add', timeout=60.0, check=check)
+    except asyncio.TimeoutError:
+        await message.clear_reactions()
+        await message.edit(embed=ErrorMessage("Превышено время ожидания"))
+        return message, None
+    else:
+        await message.clear_reactions()
+
+        answer = None
+
+        for k, v in emojis.items():
+            if v == str(reaction.emoji):
+                answer = k
+                break
+
+        return message, answer
 
 
 class PermissionsForRoom(Enum):
     banned = False
     default = None
     allowed = True
+
+
+class DefaultEmbed(Embed):
+    """
+    Embed сообщение с цветом по стандарту
+    """
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("color", 0xAEE4FC)
+        super().__init__(**kwargs)
 
 
 class ErrorMessage(Embed):
@@ -48,28 +102,11 @@ class Help(HelpCommand):
         self.width = options.pop('width', 80)  # максимальное количество символов для описания
         self.sort_commands = options.pop('sort_commands', True)  # сортировка команд и категорий по алфавиту
         self.commands_heading = options.pop('commands_heading', "Команды")  # название колонки для групп команд
-        self.embed = discord.Embed()  # Embed-шаблон
+        self.embed = DefaultEmbed()  # Embed-шаблон
 
         super().__init__(**options)
 
         self.command_attrs["hidden"] = True  # не показывать команды, которые заведомо скрыты
-
-    def shorten_text(self, text):
-        """
-        Сокращение строки до определённого количества символов
-
-        :param text: строка
-        :return: обработанная строка или та же строка, если строка меньше или равна лимиту символов
-        """
-
-        if text:
-            text = text[0].lower() + text[1:]  # сделать первую букву маленькой
-
-        # если описание превышает ограничение по символам, то сократить текст и поставить в конце троеточие
-        if len(text) > self.width:
-            text = text[0:self.width - 3] + '...'
-
-        return text
 
     def get_destination(self):
         """
@@ -87,7 +124,7 @@ class Help(HelpCommand):
         Очистка Embed-шаблона
         """
 
-        self.embed = discord.Embed()
+        self.embed = DefaultEmbed()
 
     def get_command_signature(self, command, args=False):
         """
@@ -124,8 +161,7 @@ class Help(HelpCommand):
             commands_descriptions = []
 
             for cmd in cmds:
-                commands_descriptions.append(f"`{self.get_command_signature(cmd)}` - "
-                                             f"{self.shorten_text(cmd.short_doc)}")
+                commands_descriptions.append(f"`{self.get_command_signature(cmd)}` - {cmd.short_doc}")
 
             self.embed.add_field(
                 name=category,
@@ -144,8 +180,7 @@ class Help(HelpCommand):
 
         self.embed.title = f"Команда \"{command.name}\""
 
-        self.embed.description = f"`{self.get_command_signature(command, args=True)}` - " \
-                                 f"{self.shorten_text(command.short_doc)}"
+        self.embed.description = f"`{self.get_command_signature(command, args=True)}` - {command.short_doc}"
 
         if command.usage:
             self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
@@ -165,8 +200,7 @@ class Help(HelpCommand):
         """
 
         self.embed.title = f"Команда \"{group.name}\""
-        self.embed.description = f"`{self.get_command_signature(group, args=True)}` - " \
-                                 f"{self.shorten_text(group.short_doc)}"
+        self.embed.description = f"`{self.get_command_signature(group, args=True)}` - {group.short_doc}"
 
         if group.usage:
             self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
@@ -180,14 +214,18 @@ class Help(HelpCommand):
             commands = []
 
             for cmd in group.all_commands.values():
-                commands.append(f"`{self.get_command_signature(cmd, args=False)}` - "
-                                f"{self.shorten_text(cmd.short_doc)}")
+                try:
+                    if await cmd.can_run(self.context):
+                        commands.append(f"`{self.get_command_signature(cmd, args=False)}` - {cmd.short_doc}")
+                except commands.CommandError:
+                    pass
 
-            self.embed.add_field(
-                name=f"Дополнительные команды",
-                value="\n".join(commands),
-                inline=False
-            )
+            if commands:
+                self.embed.add_field(
+                    name=f"Дополнительные команды",
+                    value="\n".join(commands),
+                    inline=False
+                )
 
         await self.context.send(embed=self.embed)
 
@@ -200,6 +238,17 @@ class Help(HelpCommand):
         """
 
         return f"Я не нашёл команду `{name}`"
+
+    async def subcommand_not_found(self, command, string):
+        """
+        Текст ошибки, при ненахождении введённой сабкоманды
+
+        :param command: команда
+        :param string: название ошибочной сабкоманды, которую пытались вызвать
+        :return: сообщение об ошибке
+        """
+
+        return f"Команда `{command.qualified_name} {string}` не найдена"
 
     async def send_error_message(self, error):
         """

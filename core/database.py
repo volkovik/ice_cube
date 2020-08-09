@@ -53,3 +53,43 @@ class UserScoreToAnotherUser(Base):
     user_id = Column(String(32), primary_key=True)
     rated_user_id = Column(String(32), primary_key=True)
     score = Column(Boolean, nullable=False)
+
+
+class UserLevel(Base):
+    __tablename__ = "users_level"
+
+    server_id = Column(String(32), primary_key=True)
+    user_id = Column(String(32), primary_key=True)
+    experience = Column(Integer, default=0, nullable=False)
+
+
+class ServerSettingsOfLevels(Base):
+    __tablename__ = "servers_setting_of_levels"
+
+    server_id = Column(String(32), primary_key=True)
+    notify_of_levelup = Column(Boolean, default=True, nullable=False)
+    levelup_message_dm = Column(Boolean, default=False, nullable=False)
+    levelup_message_channel_id = Column(String(32), server_default=None)
+    levelup_message = Column(String(256), default=None)
+
+
+class ServerAwardOfLevels(Base):
+    __tablename__ = "servers_awards_of_levels"
+
+    server_id = Column(String(32), primary_key=True)
+    role_id = Column(String(32), primary_key=True)
+    level = Column(Integer)
+
+
+class ServerIgnoreChannelsListOfLevels(Base):
+    __tablename__ = "servers_ignore_channels_lists_of_levels"
+
+    server_id = Column(String(32), primary_key=True)
+    channel_id = Column(String(32), primary_key=True)
+
+
+class ServerIgnoreRolesListOfLevels(Base):
+    __tablename__ = "servers_ignore_roles_lists_of_levels"
+
+    server_id = Column(String(32), primary_key=True)
+    role_id = Column(String(32), primary_key=True)

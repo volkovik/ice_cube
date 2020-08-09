@@ -29,7 +29,11 @@ class ErrorHandler(commands.Cog):
         elif isinstance(error, commands.MissingPermissions):
             message = ErrorMessage("У вас недостаточно прав для использования данной команды")
         elif isinstance(error, commands.BadArgument) and re.search(r"Member \".+\" not found", error.args[0]):
-            message = ErrorMessage("Я не нашёл указанного участника на сервере")
+            message = ErrorMessage("Указанный участник не был найден на сервере")
+        elif isinstance(error, commands.BadArgument) and re.search(r"Channel \".+\" not found", error.args[0]):
+            message = ErrorMessage("Указанный текстовый канал не найден")
+        elif isinstance(error, commands.BadArgument) and re.search(r"Role \".+\" not found", error.args[0]):
+            message = ErrorMessage("Указанная роль не найдена")
         elif isinstance(error, commands.BadArgument) and re.search(r"Converting to \"int\" failed for parameter "
                                                                    r"\".+\".", error.args[0]):
             message = ErrorMessage("Вы можете ввести только число")

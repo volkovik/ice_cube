@@ -3,12 +3,11 @@ import asyncio
 from discord.ext import commands
 from discord import PermissionOverwrite as Permissions
 from discord.ext.commands import CommandError
-from sqlalchemy.orm import sessionmaker
 
 from main import Session
 from core.database import ServerSettingsOfRooms, UserSettingsOfRoom, UserPermissionsOfRoom, PermissionsForRoom
 from core.commands import BotCommand
-from core.templates import SuccessfulMessage, ErrorMessage
+from core.templates import SuccessfulMessage, ErrorMessage, DefaultEmbed as Embed
 
 # Настройки войса для пользователя, которым им владеет
 OWNER_PERMISSIONS = Permissions(manage_channels=True, connect=True, speak=True)
@@ -361,7 +360,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
     @commands.Cog.listener("on_voice_state_update")
     async def voice_master(self, user, before, after):
         """
-        Создание и удаление команты, когда пользователей заходит, выходит или перемещается по голосовым каналам
+        Создание и удаление комнаты, когда пользователей заходит, выходит или перемещается по голосовым каналам
         """
 
         server = after.channel.guild if before.channel is None else before.channel.guild
@@ -478,7 +477,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             bitrate = settings["bitrate"]
             is_locked = settings["is_locked"]
 
-            message = discord.Embed(title=f"Информация о комнате пользователя \"{author.display_name}\"")
+            message = Embed(title=f"Информация о комнате пользователя \"{author.display_name}\"")
             message.set_footer(text=f"Посмотреть все доступные команды для управления комнатой можно "
                                     f"через {ctx.prefix}help room")
 
@@ -799,7 +798,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
         settings = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
 
         if settings is None:
-            embed = discord.Embed(
+            embed = Embed(
                 title="Приватные комнаты",
                 description=f"На данный момент на этом сервере нет приватных комнат. Чтобы их включить, используйте "
                             f"команду `{ctx.prefix}setrooms enable`"
@@ -808,7 +807,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             voice = server.get_channel(int(settings.channel_id_creates_rooms))
             category = voice.category
 
-            embed = discord.Embed(
+            embed = Embed(
                 title="Приватные комнаты",
                 description=f"На данный момент на этом сервере установлена система приватных комнат. Чтобы их "
                             f"выключить, используйте команду `{ctx.prefix}setrooms disable`\n\n"
@@ -873,7 +872,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
             voice = server.get_channel(int(settings.channel_id_creates_rooms))
             category = voice.category
 
-            embed = discord.Embed(
+            embed = Embed(
                 title="Выключение приватных комнат",
                 description=f"Вы уверены, что хотите выключить систему приватных комнат?\n"
                             f"**Это повлечёт удалению всех голосовых каналов в категории `{category}` и самой "
@@ -910,7 +909,7 @@ class Rooms(commands.Cog, name="Приватные комнаты"):
 
                     session.delete(settings)
                 else:
-                    embed=discord.Embed(
+                    embed=Embed(
                         title=":x: Отменено",
                         description="Вы отменили удаление приватных комнат на этом сервере",
                         color=0xDD2E44
