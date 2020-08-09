@@ -1,5 +1,4 @@
 import discord
-import asyncio
 from discord import Status
 from discord.ext import commands
 from discord.ext.commands import CommandError
@@ -7,14 +6,13 @@ from discord.ext.commands import CommandError
 from main import Session, __version__
 from core.database import User, UserScoreToAnotherUser
 from core.commands import BotCommand, BotGroupCommands
-from core.templates import SuccessfulMessage, ErrorMessage, send_message_with_reaction_choice
+from core.templates import SuccessfulMessage, DefaultEmbed as Embed, send_message_with_reaction_choice
 from core.converts import convert_status, convert_activity_type, convert_voice_region, convert_verification_level
 
 
 class Information(commands.Cog, name="Информация"):
     def __init__(self, bot):
         self.client = bot
-        self.color = 0xFFCC4D
 
     @commands.command(
         cls=BotCommand, name="user",
@@ -50,6 +48,7 @@ class Information(commands.Cog, name="Информация"):
         down_score = session.query(UserScoreToAnotherUser).filter_by(rated_user_id=str(user.id), score=False).count()
 
         user_score = up_score - down_score
+        user_score = str(user_score) if user_score <= 0 else f"+{user_score}"
 
         session.close()
 
@@ -59,10 +58,9 @@ class Information(commands.Cog, name="Информация"):
             else:
                 bio = "Пользователь ещё не ввёл информацию здесь"
 
-        message = discord.Embed(
+        message = Embed(
             title=f"Информация о \"{user.display_name}\"",
-            description=bio,
-            color=self.color
+            description=bio
         )
         message.add_field(
             name="Основная информация",
@@ -147,7 +145,7 @@ class Information(commands.Cog, name="Информация"):
 
         if user_score_from_db is None:
             emojis["cancel"] = "🚫"
-            embed = discord.Embed(
+            embed = Embed(
                 title="Выберите оценку пользователю",
                 description=f"{emojis['up']} - Положительная {emojis['down']} - Отрицательная\n\n"
                             f"{emojis['cancel']} - Отменить оценку пользователю"
@@ -166,13 +164,13 @@ class Information(commands.Cog, name="Информация"):
                 await message.edit(embed=SuccessfulMessage(f"Вы поставили отрицательную оценку "
                                                            f"`{user.display_name}`"))
             elif answer == "cancel":
-                await message.edit(embed=discord.Embed(
+                await message.edit(embed=Embed(
                     title=":x: Отменено",
                     description="Вы отменили оценку пользователю",
                     color=0xDD2E44
                 ))
         else:
-            cancelled_message = discord.Embed(
+            cancelled_message = Embed(
                 title=":x: Отменено",
                 description="Вы отменили изменение оценки пользователю",
                 color=0xDD2E44
@@ -184,7 +182,7 @@ class Information(commands.Cog, name="Информация"):
             if user_score_from_db.score is True:
                 del emojis["up"]
 
-                embed = discord.Embed(
+                embed = Embed(
                     title="Выберите оценку пользователю",
                     description=f"Ваша текущая оценка этому пользователю: `Положительная`\n"
                                 f"{emojis['down']} - Изменить оценку на отрицательную\n"
@@ -208,7 +206,7 @@ class Information(commands.Cog, name="Информация"):
             else:
                 del emojis["down"]
 
-                embed = discord.Embed(
+                embed = Embed(
                     title="Выберите оценку пользователю",
                     description=f"Ваша текущая оценка этому пользователю: `Отрицательная`\n"
                                 f"{emojis['up']} - Изменить оценку на положительную\n"
@@ -303,11 +301,11 @@ class Information(commands.Cog, name="Информация"):
                 raise CommandError("Вы уже поставили отрицательную оценку пользователю")
             else:
                 score_from_db.score = False
+                session.commit()
                 embed = SuccessfulMessage(f"Вы изменили вашу оценку на отрицательную `{user.display_name}`")
 
         await ctx.send(embed=embed)
 
-        session.commit()
         session.close()
 
     @set_reputation_for_user.command(
@@ -334,14 +332,15 @@ class Information(commands.Cog, name="Информация"):
         score_from_db = session.query(UserScoreToAnotherUser).filter_by(**db_kwargs)
 
         if score_from_db is None:
+            session.close()
             raise CommandError("Вы не ставили этому пользователю оценку")
         else:
             score_from_db.delete()
+            session.commit()
             embed = SuccessfulMessage(f"Вы удалили оценку `{user.display_name}`")
 
             await ctx.send(embed=embed)
 
-        session.commit()
         session.close()
 
     @commands.command(cls=BotCommand, name="server")
@@ -381,12 +380,11 @@ class Information(commands.Cog, name="Информация"):
 
             return info
 
-        message = discord.Embed(
+        message = Embed(
             title=f"Информация о \"{server.name}\"",
             description=f"**Владелец:** {server.owner}"
                         f"\n**Регион:** {region}"
-                        f"\n**Дата создания:** {created_at}",
-            color=self.color
+                        f"\n**Дата создания:** {created_at}"
         )
         message.add_field(
             name="Участники",
@@ -406,24 +404,25 @@ class Information(commands.Cog, name="Информация"):
     @commands.command(cls=BotCommand, name="info")
     async def about_bot(self, ctx):
         """
-        информация о боте
+        Информация о боте
         """
 
-        message = discord.Embed(
-            title="Информация о Ice Cube",
-            description="**Ice Cube** - это простой бот, основанный на языке Python. Сейчас, функционал у бота "
-                        "скудный, но со временем он будет пополняться. Разработчик бота: "
-                        "**[volkovik](https://github.com/volkovik)**",
-            color=0xAEE4FC
+        app = await self.client.application_info()
+
+        message = Embed(
+            title=f"Информация о \"{app.name}\"",
+            description=app.description
         )
         message.set_thumbnail(url=self.client.user.avatar_url)
         message.set_footer(
-            text="© Все права защищены volkovik 2020",
+            text="© volkovik 2020. Все права защищены",
             icon_url="https://avatars.githubusercontent.com/u/40608600"
         )
         message.add_field(
             name="Полезные ссылки",
-            value="[Discord сервер](https://discord.gg/atxwBRB)"
+            value=f"[Discord сервер](https://discord.gg/atxwBRB)\n"
+                  f"[Разработчик](https://github.com/volkovik)\n"
+                  f"[Пригласить бота](https://discord.com/oauth2/authorize?client_id={app.id}&scope=bot&permissions=8)"
         )
         message.add_field(
             name="Версия бота",

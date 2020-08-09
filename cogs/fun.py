@@ -1,15 +1,14 @@
-import discord
 from random import choice
 from discord.ext import commands
 from discord.ext.commands import CommandError
 
 from core.commands import BotCommand
+from core.templates import DefaultEmbed as Embed
 
 
 class Fun(commands.Cog, name="Развлечения"):
     def __init__(self, bot):
         self.client = bot
-        self.color = 0x32a852
 
     @commands.command(
         cls=BotCommand, name="8ball",
@@ -33,10 +32,9 @@ class Fun(commands.Cog, name="Развлечения"):
         if question is None:
             raise CommandError("Вы не ввели вопрос")
         else:
-            message = discord.Embed(
+            message = Embed(
                 title=":8ball: 8ball",
-                description="> " + question,
-                color=self.color
+                description="> " + question
             )
             message.add_field(
                 name="Ответ",

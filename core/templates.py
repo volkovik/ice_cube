@@ -1,4 +1,3 @@
-import discord
 import asyncio
 from enum import Enum
 from itertools import groupby
@@ -56,6 +55,16 @@ class PermissionsForRoom(Enum):
     allowed = True
 
 
+class DefaultEmbed(Embed):
+    """
+    Embed сообщение с цветом по стандарту
+    """
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("color", 0xAEE4FC)
+        super().__init__(**kwargs)
+
+
 class ErrorMessage(Embed):
     """
     Embed сообщение об ошибке
@@ -93,7 +102,7 @@ class Help(HelpCommand):
         self.width = options.pop('width', 80)  # максимальное количество символов для описания
         self.sort_commands = options.pop('sort_commands', True)  # сортировка команд и категорий по алфавиту
         self.commands_heading = options.pop('commands_heading', "Команды")  # название колонки для групп команд
-        self.embed = discord.Embed()  # Embed-шаблон
+        self.embed = DefaultEmbed()  # Embed-шаблон
 
         super().__init__(**options)
 
@@ -115,7 +124,7 @@ class Help(HelpCommand):
         Очистка Embed-шаблона
         """
 
-        self.embed = discord.Embed()
+        self.embed = DefaultEmbed()
 
     def get_command_signature(self, command, args=False):
         """

@@ -10,7 +10,7 @@ from string import Template
 
 from main import Session
 from core.commands import BotCommand, BotGroupCommands
-from core.templates import SuccessfulMessage, send_message_with_reaction_choice
+from core.templates import SuccessfulMessage, DefaultEmbed as Embed, send_message_with_reaction_choice
 from core.database import (UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels, ServerIgnoreChannelsListOfLevels,
                            ServerIgnoreRolesListOfLevels)
 
@@ -296,7 +296,7 @@ class Level(commands.Cog, name="Уровни"):
 
                 user_db = session.query(UserLevel).filter_by(**db_kwargs).first()
 
-                add_exp = random.randint(15, 30)
+                add_exp = random.randint(15, 25)
 
                 if user_db is None:
                     user_db = UserLevel(**db_kwargs, experience=add_exp)
@@ -383,7 +383,7 @@ class Level(commands.Cog, name="Уровни"):
         experience = user_db.experience
         level = get_level(experience)
 
-        message = discord.Embed()
+        message = Embed()
         message.add_field(
             name="Уровень",
             value=str(level)
@@ -432,7 +432,7 @@ class Level(commands.Cog, name="Уровни"):
                 top.append(f"**#{len(top) + 1}:** `{user.display_name}`\n"
                            f"Уровень: {get_level(user_exp)} | Опыт: {user_exp}")
 
-        embed = discord.Embed(
+        embed = Embed(
             title="Топ пользователей",
             description="\n".join(top)
         )
@@ -494,7 +494,7 @@ class Level(commands.Cog, name="Уровни"):
         Настройка рейтинга участников на сервере
         """
 
-        embed = discord.Embed(
+        embed = Embed(
             title="Настройка рейтинга участников",
         )
 
@@ -551,7 +551,7 @@ class Level(commands.Cog, name="Уровни"):
             "cancel": "🚫"
         }
 
-        embed = discord.Embed(
+        embed = Embed(
             title="Выключение рейтинга участников",
             description=f"Вы уверены, что хотите выключить рейтинг участников?\n\n"
                         f"{emojis['accept']} - Да, выключить\n"
@@ -631,7 +631,7 @@ class Level(commands.Cog, name="Уровни"):
                      "`$server_name` - название сервера\n" \
                      "`$level` - достигнутый уровень"
 
-        embed = discord.Embed(
+        embed = Embed(
             title="Сообщение при получении нового уровня",
             description=format_levelup_message(text, ctx, random.randint(1, 50))
         )
@@ -842,7 +842,7 @@ class Level(commands.Cog, name="Уровни"):
                 text += f"\n\nВы можете добавить роль в качестве награды за достижение определённого уровня " \
                         f"пользователем, используя команду `.setlevels award add`"
 
-        embed = discord.Embed(
+        embed = Embed(
             title="Награды за получение уровня",
             description=text
         )
@@ -985,7 +985,7 @@ class Level(commands.Cog, name="Уровни"):
             "cancel": "🚫"
         }
 
-        embed = discord.Embed(
+        embed = Embed(
             title="Удаление всех наград",
             description=f"Вы уверены, что хотите удалить все роли из списка наград за уровень?\n\n"
                         f"{emojis['accept']} - Да, выключить\n"
@@ -1054,7 +1054,7 @@ class Level(commands.Cog, name="Уровни"):
         else:
             roles_text = f"**Здесь ничего нет**"
 
-        embed = discord.Embed(
+        embed = Embed(
             title="Чёрный список"
         )
         embed.add_field(
