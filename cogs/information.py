@@ -58,8 +58,11 @@ class Information(commands.Cog, name="Информация"):
             else:
                 bio = "Пользователь ещё не ввёл информацию здесь"
 
+        app = await self.client.application_info()
+        is_dev = app.owner.id == user.id
+
         message = Embed(
-            title=f"Информация о \"{user.display_name}\"",
+            title=f"Информация о \"{user.display_name}\"" + (" :ice_cube:" if is_dev else ""),
             description=bio
         )
         message.add_field(
