@@ -401,20 +401,20 @@ class Level(commands.Cog, name="Уровни"):
 
         await ctx.send(embed=message)
 
-    @commands.command(cls=BotCommand, name="leaders")
+    @commands.command(cls=BotCommand, name="top")
     @level_system_is_on()
     async def get_leaders_on_server(self, ctx):
         """
-        Топ участников по уровню на сервере
+        Топ 10 участников по уровню на сервере
         """
 
         server = ctx.guild
 
         session = Session()
-
         users = session.query(UserLevel).filter_by(
             server_id=str(server.id)
         ).order_by(sqlalchemy.desc(UserLevel.experience)).all()
+        session.close()
 
         top = []
 
@@ -425,20 +425,20 @@ class Level(commands.Cog, name="Уровни"):
             user = server.get_member(int(user_from_db.user_id))
 
             if user is None:
-                session.delete()
+                continue
             else:
                 user_exp = user_from_db.experience
 
                 top.append(f"**#{len(top) + 1}:** `{user.display_name}`\n"
                            f"Уровень: {get_level(user_exp)} | Опыт: {user_exp}")
 
+        if not top:
+            raise CommandError("Никто из пользователь на сервере ещё не получил опыт")
+
         embed = Embed(
-            title="Топ пользователей",
+            title="Топ 10 пользователей на сервере",
             description="\n".join(top)
         )
-
-        session.commit()
-        session.close()
 
         await ctx.send(embed=embed)
 
@@ -502,11 +502,10 @@ class Level(commands.Cog, name="Уровни"):
         if level_system_is_enabled(session, ctx):
             embed.description = f"**На сервере включён рейтинг участников**\n\n" \
                                 f"Используйте команду `{ctx.prefix}help setlevels`, чтобы узнать о настройках\n" \
-                                f"Если вы хотите выключить это, используйте команду `{ctx.prefix}help setlevels " \
-                                f"disable`"
+                                f"Если вы хотите выключить это, используйте команду `{ctx.prefix}setlevels disable`"
         else:
             embed.description = f"**На сервере нет рейтинга участников.**\n\n" \
-                                f"Чтобы включить это, используйте команду `{ctx.prefix}help setlevels enable`"
+                                f"Чтобы включить это, используйте команду `{ctx.prefix}setlevels enable`"
         session.close()
 
         await ctx.send(embed=embed)
