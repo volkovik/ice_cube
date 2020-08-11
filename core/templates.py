@@ -186,7 +186,7 @@ class Help(HelpCommand):
             self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
             self.embed.add_field(
                 name="Аргументы",
-                value=" ".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
+                value="\n".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
                                 for key, params in command.usage.items()])
             )
 
@@ -206,7 +206,7 @@ class Help(HelpCommand):
             self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
             self.embed.add_field(
                 name="Аргументы",
-                value=" ".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
+                value="\n".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
                                 for key, params in group.usage.items()])
             )
 
