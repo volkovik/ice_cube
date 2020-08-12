@@ -2,17 +2,14 @@ from discord.ext import commands
 from discord.ext.commands import CommandError
 
 from main import Session, DEFAULT_PREFIX
-from core.commands import BotCommand
+from core.commands import Cog, Command
 from core.database import Server
 from core.templates import SuccessfulMessage
 
 
-class Settings(commands.Cog, name="Настройки"):
-    def __init__(self, bot):
-        self.client = bot
-
+class Settings(Cog, name="Настройки"):
     @commands.command(
-        cls=BotCommand, name="prefix",
+        cls=Command, name="prefix",
         usage={"prefix": ("префикс бота, который будет работать только на этом сервере (оставьте пустым, если хотите "
                           "удалить уже существующий префикс)", True)}
     )

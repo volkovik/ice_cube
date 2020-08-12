@@ -5,17 +5,14 @@ from discord.ext.commands import CommandError
 
 from main import Session, __version__
 from core.database import User, UserScoreToAnotherUser
-from core.commands import BotCommand, BotGroupCommands
+from core.commands import Cog, Group, Command
 from core.templates import SuccessfulMessage, DefaultEmbed as Embed, send_message_with_reaction_choice
 from core.converts import convert_status, convert_activity_type, convert_voice_region, convert_verification_level
 
 
-class Information(commands.Cog, name="Информация"):
-    def __init__(self, bot):
-        self.client = bot
-
+class Information(Cog, name="Информация"):
     @commands.command(
-        cls=BotCommand, name="user",
+        cls=Command, name="user",
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}
     )
     async def user_information(self, ctx, user: commands.MemberConverter = None):
@@ -79,7 +76,7 @@ class Information(commands.Cog, name="Информация"):
         await ctx.send(embed=message)
 
     @commands.command(
-        cls=BotCommand, name="bio",
+        cls=Command, name="bio",
         usage={"текст": ("описание, которое будет отображаться в вашем профиле (оставьте пустым, если хотите удалить "
                          "уже существующий текст)", True)}
     )
@@ -119,7 +116,7 @@ class Information(commands.Cog, name="Информация"):
         session.close()
 
     @commands.group(
-        cls=BotGroupCommands, name="rate", invoke_without_command=True,
+        cls=Group, name="rate", invoke_without_command=True,
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
     )
     async def set_reputation_for_user(self, ctx, user: commands.MemberConverter):
@@ -234,7 +231,7 @@ class Information(commands.Cog, name="Информация"):
         session.close()
 
     @set_reputation_for_user.command(
-        cls=BotCommand, name="up",
+        cls=Command, name="up",
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
     )
     async def rate_up_user(self, ctx, user: commands.MemberConverter):
@@ -273,7 +270,7 @@ class Information(commands.Cog, name="Информация"):
         session.close()
 
     @set_reputation_for_user.command(
-        cls=BotCommand, name="down",
+        cls=Command, name="down",
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
     )
     async def rate_down_user(self, ctx, user: commands.MemberConverter):
@@ -312,7 +309,7 @@ class Information(commands.Cog, name="Информация"):
         session.close()
 
     @set_reputation_for_user.command(
-        cls=BotCommand, name="remove",
+        cls=Command, name="remove",
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
     )
     async def remove_score_user(self, ctx, user: commands.MemberConverter):
@@ -346,7 +343,7 @@ class Information(commands.Cog, name="Информация"):
 
         session.close()
 
-    @commands.command(cls=BotCommand, name="server")
+    @commands.command(cls=Command, name="server")
     async def server_information(self, ctx):
         """
         Основная информация о сервере
@@ -404,7 +401,7 @@ class Information(commands.Cog, name="Информация"):
 
         await ctx.send(embed=message)
 
-    @commands.command(cls=BotCommand, name="info")
+    @commands.command(cls=Command, name="info")
     async def about_bot(self, ctx):
         """
         Информация о боте

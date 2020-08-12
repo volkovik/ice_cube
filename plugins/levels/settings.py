@@ -1,101 +1,15 @@
-import discord
-import datetime
-import cmath
 import random
-import sqlalchemy
 from discord.ext import commands
 from discord.ext.commands import CommandError
-from discord.ext.commands import CooldownMapping, Cooldown
-from string import Template
 
 from main import Session
-from core.commands import BotCommand, BotGroupCommands
+from core.commands import Cog, Group, Command
 from core.templates import SuccessfulMessage, DefaultEmbed as Embed, send_message_with_reaction_choice
 from core.database import (UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels, ServerIgnoreChannelsListOfLevels,
                            ServerIgnoreRolesListOfLevels)
 
-
-DEFAULT_LEVELUP_MESSAGE_FOR_SERVER = "$member_mention получил `$level уровень`"
-DEFAULT_LEVELUP_MESSAGE_FOR_DM = "Вы получили `$level уровень` на **$server_name**"
-
-
-def get_experience(level: int):
-    """
-    Выдаёт количество опыта, необходимого для получения n уровня
-
-    :param level: n уровень
-    :type level: int
-    :return: кол-во опыта
-    :rtype: int
-    """
-
-    if level <= 0:
-        return 0
-    else:
-        return 5 * level ** 2 + 100 * level + 200
-
-
-def get_level(exp: int):
-    """
-    Выдаёт достигнутый уровень по количеству опыта
-
-    :param exp: количество опыта
-    :type exp: int
-    :return: уровень
-    :rtype: int
-    """
-
-    a = 5
-    b = 100
-    c = 200 - exp
-
-    D = b ** 2 - 4 * a * c
-
-    x = ((-b + cmath.sqrt(D)) / (2 * a)).real
-
-    if x < 0:
-        return 0
-    else:
-        return int(x)
-
-
-def format_levelup_message(text, ctx, level):
-    """
-    Форматировать сообщение по заданным переменным
-
-    :param text: Текст, которое нужно форматировать
-    :type text: str
-    :param ctx: Данные об сообщении
-    :type ctx: discord.Context
-    :param level: Уровень, который был достигнут
-    :type level: int
-    :return: Форматированное сообщение
-    :rtype: str
-    """
-
-    return Template(text).safe_substitute(
-        member_name=ctx.author.display_name,
-        member_mention=ctx.author.mention,
-        server_name=ctx.guild.name,
-        level=level
-    )
-
-# Проверки для команд
-
-
-def level_system_is_enabled(session, ctx):
-    return session.query(ServerSettingsOfLevels).filter_by(server_id=str(ctx.guild.id)).first() is not None
-
-
-def level_system_is_on():
-    def decorator(ctx):
-        session = Session()
-        is_on = level_system_is_enabled(session, ctx)
-        session.close()
-
-        return is_on
-
-    return commands.check(decorator)
+from .utils import (format_levelup_message, level_system_is_enabled, level_system_is_on,
+                    DEFAULT_LEVELUP_MESSAGE_FOR_SERVER, DEFAULT_LEVELUP_MESSAGE_FOR_DM)
 
 
 def level_system_is_off():
@@ -228,265 +142,7 @@ def roles_in_ignore_list_exist():
     return commands.check(predicate)
 
 
-class Level(commands.Cog, name="Уровни"):
-    def __init__(self, bot):
-        self.client = bot
-        self._buckets = CooldownMapping(Cooldown(1, 60, commands.BucketType.member))
-
-    @commands.Cog.listener(name="on_message")
-    async def when_message(self, message):
-        context = await self.client.get_context(message)
-
-        if context.valid:
-            return
-
-        user = message.author
-
-        if user.bot or message.channel.type is discord.ChannelType.private:
-            return
-
-        server = message.guild
-
-        session = Session()
-        server_settings = session.query(ServerSettingsOfLevels).filter_by(server_id=str(server.id)).first()
-
-        if server_settings is not None:
-            ignored_channels = session.query(ServerIgnoreChannelsListOfLevels).filter_by(server_id=str(server.id)).all()
-
-            for ignored in ignored_channels:
-                channel = server.get_channel(int(ignored.channel_id))
-
-                if channel is not None:
-                    if message.channel == channel:
-                        session.close()
-                        return
-                else:
-                    session.delete(ignored)
-                    session.close()
-
-                if str(message.channel.id) == ignored.channel_id:
-                    session.close()
-                    return
-
-            ignored_roles = session.query(ServerIgnoreRolesListOfLevels).filter_by(server_id=str(server.id)).all()
-
-            for ignored in ignored_roles:
-                role = server.get_role(int(ignored.role_id))
-
-                if role is not None:
-                    if role in user.roles:
-                        session.close()
-                        return
-                else:
-                    session.delete(ignored)
-                    session.commit()
-
-            if self._buckets.valid:
-                current = message.created_at.replace(tzinfo=datetime.timezone.utc).timestamp()
-                bucket = self._buckets.get_bucket(message, current)
-                retry_after = bucket.update_rate_limit(current)
-
-                if retry_after:
-                    return
-
-                db_kwargs = {
-                    "server_id": str(server.id),
-                    "user_id": str(user.id)
-                }
-
-                user_db = session.query(UserLevel).filter_by(**db_kwargs).first()
-
-                add_exp = random.randint(15, 25)
-
-                if user_db is None:
-                    user_db = UserLevel(**db_kwargs, experience=add_exp)
-                    before_exp = 0
-                    session.add(user_db)
-                else:
-                    before_exp = user_db.experience
-                    user_db.experience += add_exp
-                session.commit()
-
-                next_level = get_level(before_exp) + 1
-
-                if get_experience(next_level) <= user_db.experience and server_settings.notify_of_levelup:
-                    del db_kwargs["user_id"]
-                    awards = session.query(ServerAwardOfLevels).filter_by(**db_kwargs, level=next_level).all()
-
-                    roles = []
-
-                    if awards is not None:
-                        higher_bot_role = server.me.roles[-1]
-
-                        for award in awards:
-                            role = server.get_role(int(award.role_id))
-
-                            if role is None:
-                                session.delete(award)
-                                session.commit()
-                            elif role < higher_bot_role:
-                                roles.append(role)
-
-                    await user.add_roles(*roles)
-
-                    if server_settings.levelup_message is not None:
-                        text = server_settings.levelup_message
-                    else:
-                        if server_settings.levelup_message_dm:
-                            text = DEFAULT_LEVELUP_MESSAGE_FOR_DM
-                        else:
-                            text = DEFAULT_LEVELUP_MESSAGE_FOR_SERVER
-
-                    if server_settings.levelup_message_dm:
-                        channel = user
-                    else:
-                        if server_settings.levelup_message_channel_id is None:
-                            channel = message.channel
-                        else:
-                            channel = message.guild.get_channel(int(server_settings.levelup_message_channel_id))
-
-                            if channel is None:
-                                server_settings.levelup_message_channel_id = None
-                                session.commit()
-
-                                channel = message.channel
-
-                    await channel.send(format_levelup_message(text, message, next_level))
-
-        session.close()
-
-    @commands.command(
-        cls=BotCommand, name="rank",
-        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}
-    )
-    @level_system_is_on()
-    async def get_current_level(self, ctx, user: commands.MemberConverter = None):
-        """
-        Показывает уровень пользователя
-        """
-
-        if user is None:
-            user = ctx.author
-
-        server = ctx.guild
-
-        session = Session()
-        user_db = session.query(UserLevel).filter_by(server_id=str(server.id), user_id=str(user.id)).first()
-        session.close()
-
-        if user_db is None:
-            if user == ctx.author:
-                raise CommandError("Вы ещё не числитесь в рейтинге участников")
-            else:
-                raise CommandError("Этот пользователь ещё не числится в рейтинге участников")
-
-        experience = user_db.experience
-        level = get_level(experience)
-
-        message = Embed()
-        message.add_field(
-            name="Уровень",
-            value=str(level)
-        )
-        message.add_field(
-            name="До следующего уровня",
-            value=f"{experience - get_experience(level)}/"
-                  f"{get_experience(level + 1) - get_experience(level)}"
-        )
-        message.add_field(
-            name="Всего опыта",
-            value=str(experience)
-        )
-        message.set_author(name=user.display_name, icon_url=user.avatar_url_as(static_format="jpg"))
-
-        await ctx.send(embed=message)
-
-    @commands.command(cls=BotCommand, name="top")
-    @level_system_is_on()
-    async def get_leaders_on_server(self, ctx):
-        """
-        Топ 10 участников по уровню на сервере
-        """
-
-        server = ctx.guild
-
-        session = Session()
-        users = session.query(UserLevel).filter_by(
-            server_id=str(server.id)
-        ).order_by(sqlalchemy.desc(UserLevel.experience)).all()
-        session.close()
-
-        top = []
-
-        for user_from_db in users:
-            if len(top) == 10:
-                break
-
-            user = server.get_member(int(user_from_db.user_id))
-
-            if user is None:
-                continue
-            else:
-                user_exp = user_from_db.experience
-
-                top.append(f"**#{len(top) + 1}:** `{user.display_name}`\n"
-                           f"Уровень: {get_level(user_exp)} | Опыт: {user_exp}")
-
-        if not top:
-            raise CommandError("Никто из пользователь на сервере ещё не получил опыт")
-
-        embed = Embed(
-            title="Топ 10 пользователей на сервере",
-            description="\n".join(top)
-        )
-
-        await ctx.send(embed=embed)
-
-    @commands.command(
-        cls=BotCommand, name="editlevel",
-        usage={
-            "уровень": ("уровень, который будет поставлен для участника", True),
-            "пользователь": ("упоминание, ID или никнейм пользователя (оставьте пустым, если хотите изменить уровень "
-                             "себе)", True),
-        }
-    )
-    @commands.has_permissions(administrator=True)
-    @level_system_is_on()
-    async def edit_user_level(self, ctx, level: int = None, user: commands.MemberConverter = None):
-        """
-        Изменить уровень пользователя
-        """
-
-        if user is None:
-            user = ctx.author
-
-        if level > 1000:
-            raise CommandError("Вы не можете поставить уровень больше 1000-го")
-        elif level < 0:
-            raise CommandError("Вы не можете поставить уровень меньше нуля")
-
-        session = Session()
-        db_kwargs = {
-            "server_id": str(ctx.guild.id),
-            "user_id": str(user.id)
-        }
-        user_level = session.query(UserLevel).filter_by(**db_kwargs).first()
-
-        if user_level is None:
-            user_level = UserLevel(**db_kwargs)
-            session.add(user_level)
-
-        user_level.experience = get_experience(level)
-        session.commit()
-        session.close()
-
-        if user == ctx.author:
-            await ctx.send(embed=SuccessfulMessage(f"Вы поставили себе `{level} уровень`"))
-        else:
-            await ctx.send(
-                embed=SuccessfulMessage(f"Вы поставили пользователю `{user.display_name}` `{level} уровень`")
-            )
-
+class LevelsSettings(Cog, name="Настройки"):
     @commands.group(name="setlevels", invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     async def levels_settings(self, ctx):
@@ -510,7 +166,7 @@ class Level(commands.Cog, name="Уровни"):
 
         await ctx.send(embed=embed)
 
-    @levels_settings.command(cls=BotCommand, name="enable")
+    @levels_settings.command(cls=Command, name="enable")
     @commands.has_permissions(administrator=True)
     @level_system_is_off()
     async def enable_levels_system(self, ctx):
@@ -529,7 +185,7 @@ class Level(commands.Cog, name="Уровни"):
 
         await ctx.send(embed=message)
 
-    @levels_settings.command(cls=BotCommand, name="disable")
+    @levels_settings.command(cls=Command, name="disable")
     @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def disable_levels_system(self, ctx):
@@ -679,7 +335,7 @@ class Level(commands.Cog, name="Уровни"):
         await ctx.send(embed=SuccessfulMessage("Вы выключили оповещение о новом уровне пользователя"))
 
     @levelup_message.group(
-        cls=BotGroupCommands, name="edit", invoke_without_command=True,
+        cls=Group, name="edit", invoke_without_command=True,
         usage={"текст": ("текст, который будет отправляться по достижению нового уровня пользователем", True)}
     )
     @commands.has_permissions(administrator=True)
@@ -704,7 +360,7 @@ class Level(commands.Cog, name="Уровни"):
 
         await ctx.send(embed=SuccessfulMessage("Вы изменили текст сообщения"))
 
-    @edit_levelup_message.command(cls=BotCommand, name="default")
+    @edit_levelup_message.command(cls=Command, name="default")
     @commands.has_permissions(administrator=True)
     @levelup_message_is_custom()
     async def reset_levelup_message(self, ctx):
@@ -721,7 +377,7 @@ class Level(commands.Cog, name="Уровни"):
         await ctx.send(embed=SuccessfulMessage("Вы сбросили текст сообщения"))
 
     @levelup_message.group(
-        cls=BotGroupCommands, name="send", invoke_without_command=True,
+        cls=Group, name="send", invoke_without_command=True,
         usage={"канал": ("упоминание, ID или название текстового канала", True)}
     )
     @commands.has_permissions(administrator=True)
@@ -857,7 +513,7 @@ class Level(commands.Cog, name="Уровни"):
         await ctx.send(embed=embed)
 
     @awards_for_levels.command(
-        cls=BotCommand, name="add",
+        cls=Command, name="add",
         usage={
             "роль": ("упоминание, ID или название роли", True),
             "уровень": ("по достижению этого уровня, пользователь получит роль", True)
@@ -872,6 +528,11 @@ class Level(commands.Cog, name="Уровни"):
 
         if role is None:
             raise CommandError("Вы не ввели роль")
+
+        if level > 1000:
+            raise CommandError("Вы не можете поставить уровень больше 1000-го")
+        elif level < 0:
+            raise CommandError("Вы не можете поставить уровень меньше нуля")
 
         server = ctx.guild
 
@@ -906,7 +567,7 @@ class Level(commands.Cog, name="Уровни"):
                                                    f"`{level} уровня`"))
 
     @awards_for_levels.command(
-        cls=BotCommand, name="edit",
+        cls=Command, name="edit",
         usage={
             "роль": ("упоминание, ID или название роли", True),
             "уровень": ("по достижению этого уровня, пользователь получит роль", True)
@@ -923,6 +584,11 @@ class Level(commands.Cog, name="Уровни"):
             raise CommandError("Вы не ввели роль")
         elif level is None:
             raise CommandError("Вы не ввели уровень")
+
+        if level > 1000:
+            raise CommandError("Вы не можете поставить уровень больше 1000-го")
+        elif level < 0:
+            raise CommandError("Вы не можете поставить уровень меньше нуля")
 
         session = Session()
         award = session.query(ServerAwardOfLevels).filter_by(server_id=str(ctx.guild.id), role_id=str(role.id)).first()
@@ -943,7 +609,7 @@ class Level(commands.Cog, name="Уровни"):
                                                    f"уровня`"))
 
     @awards_for_levels.command(
-        cls=BotCommand, name="remove",
+        cls=Command, name="remove",
         usage={"роль": ("упоминание, ID или название текстового канала", True)}
     )
     @commands.has_permissions(administrator=True)
@@ -988,7 +654,7 @@ class Level(commands.Cog, name="Уровни"):
             title="Удаление всех наград",
             description=f"Вы уверены, что хотите удалить все роли из списка наград за уровень?\n\n"
                         f"{emojis['accept']} - Да, выключить\n"
-                        f"{emojis['cancel']} - Нет, отменить выключение"
+                        f"{emojis['cancel']} - Нет, отменить удаление"
         )
 
         message, answer = await send_message_with_reaction_choice(self.client, ctx, embed, emojis)
@@ -1087,7 +753,7 @@ class Level(commands.Cog, name="Уровни"):
         await ctx.send_help(ctx.command)
 
     @channel_ignore_list.command(
-        cls=BotCommand, name="add",
+        cls=Command, name="add",
         usage={"канал": ("упоминание, ID или название текстового канала", True)}
     )
     @commands.has_permissions(administrator=True)
@@ -1119,7 +785,7 @@ class Level(commands.Cog, name="Уровни"):
             await ctx.send(embed=SuccessfulMessage("Вы добавили текстовый канал в чёрный список"))
 
     @channel_ignore_list.command(
-        cls=BotCommand, name="remove",
+        cls=Command, name="remove",
         usage={"канал": ("упоминание, ID или название текстового канала", True)}
     )
     @commands.has_permissions(administrator=True)
@@ -1175,7 +841,7 @@ class Level(commands.Cog, name="Уровни"):
         await ctx.send_help(ctx.command)
 
     @role_ignore_list.command(
-        cls=BotCommand, name="add",
+        cls=Command, name="add",
         usage={"роль": ("упоминание, ID или название роли", True)}
     )
     @commands.has_permissions(administrator=True)
@@ -1207,7 +873,7 @@ class Level(commands.Cog, name="Уровни"):
             await ctx.send(embed=SuccessfulMessage("Вы добавили роль в чёрный список"))
 
     @role_ignore_list.command(
-        cls=BotCommand, name="remove",
+        cls=Command, name="remove",
         usage={"роль": ("упоминание, ID или название роли", True)}
     )
     @commands.has_permissions(administrator=True)
@@ -1251,7 +917,3 @@ class Level(commands.Cog, name="Уровни"):
         session.close()
 
         await ctx.send(embed=SuccessfulMessage("Вы сбросили чёрный список для ролей"))
-
-
-def setup(bot):
-    bot.add_cog(Level(bot))

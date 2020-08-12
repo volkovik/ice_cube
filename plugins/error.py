@@ -3,12 +3,10 @@ from discord.ext import commands
 from traceback import print_exception
 
 from core.templates import ErrorMessage
+from core.commands import Cog
 
 
-class ErrorHandler(commands.Cog):
-    def __init__(self, bot):
-        self.client = bot
-
+class ErrorHandler(Cog):
     @commands.Cog.listener(name="on_command_error")
     async def error_handler(self, ctx, error):
         """

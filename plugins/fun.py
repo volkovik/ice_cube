@@ -2,16 +2,13 @@ from random import choice
 from discord.ext import commands
 from discord.ext.commands import CommandError
 
-from core.commands import BotCommand
+from core.commands import Cog, Command
 from core.templates import DefaultEmbed as Embed
 
 
-class Fun(commands.Cog, name="Развлечения"):
-    def __init__(self, bot):
-        self.client = bot
-
+class Fun(Cog, name="Развлечения"):
     @commands.command(
-        cls=BotCommand, name="8ball",
+        cls=Command, name="8ball",
         usage={"вопрос": ("закрытый вопрос (на который можно ответить да или нет)", True)}
     )
     async def eight_ball_game(self, ctx, *, question=None):
