@@ -12,8 +12,10 @@ from core.database import Base, Server
 __version__ = "0.3.0.1b"
 
 # Основные константы
-DEV_MODE = True if os.environ.get("DEV_MODE") == "True" else False
+DEV_MODE = os.environ.get("DEV_MODE") == "True"
 DEFAULT_PREFIX = "." if not DEV_MODE else ">"
+SAVE_LOGS = os.environ.get("SAVE_LOGS") == "True"
+PRINT_LOG_TIME = os.environ.get("PRINT_LOG_TIME") == "True"
 
 # База данных
 ENGINE_DB = sqlalchemy.create_engine(os.environ.get("DATABASE_URL"))
@@ -21,11 +23,19 @@ Session = sessionmaker(bind=ENGINE_DB)
 Base.metadata.create_all(bind=ENGINE_DB)
 
 # Конфигурация логирования
-output_log_format = "%(asctime)s | %(levelname)s:%(name)s: %(message)s"
+if PRINT_LOG_TIME:
+    output_log_format = "%(asctime)s | %(levelname)s:%(name)s: %(message)s"
+else:
+    output_log_format = "%(levelname)s:%(name)s: %(message)s"
 date_format = "%d.%m.%Y %H:%M:%S"
 
+if DEV_MODE:
+    level = logging.DEBUG
+else:
+    level = logging.INFO
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=level,
     format=output_log_format,
     datefmt=date_format
 )
@@ -35,17 +45,15 @@ logger.setLevel(logging.INFO)
 discord_logger = logging.getLogger("discord")
 discord_logger.setLevel(logging.INFO)
 
-if not os.path.exists("logs"):
-    os.makedirs("logs")
-
-handler = logging.FileHandler(
-    filename=f"logs/{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}.log",
-    encoding="utf-8",
-    mode="w"
-)
-handler.setFormatter(logging.Formatter(output_log_format, date_format))
-logger.addHandler(handler)
-discord_logger.addHandler(handler)
+if SAVE_LOGS:
+    handler = logging.FileHandler(
+        filename=f"logs/{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}.log",
+        encoding="utf-8",
+        mode="w"
+    )
+    handler.setFormatter(logging.Formatter(output_log_format, date_format))
+    logger.addHandler(handler)
+    discord_logger.addHandler(handler)
 
 
 def get_prefix(bot, message):
