@@ -17,6 +17,10 @@ from .utils import (level_system_is_on, get_level, get_experience, format_levelu
 
 
 class Levels(Cog, name="Уровни"):
+    def __init__(self, bot):
+        self._buckets = CooldownMapping(Cooldown(1, 60, commands.BucketType.member))
+        super().__init__(bot)
+
     @commands.Cog.listener(name="on_message")
     async def when_message(self, message):
         context = await self.client.get_context(message)

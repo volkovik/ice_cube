@@ -529,6 +529,11 @@ class LevelsSettings(Cog, name="Настройки"):
         if role is None:
             raise CommandError("Вы не ввели роль")
 
+        if level > 1000:
+            raise CommandError("Вы не можете поставить уровень больше 1000-го")
+        elif level < 0:
+            raise CommandError("Вы не можете поставить уровень меньше нуля")
+
         server = ctx.guild
 
         session = Session()
@@ -579,6 +584,11 @@ class LevelsSettings(Cog, name="Настройки"):
             raise CommandError("Вы не ввели роль")
         elif level is None:
             raise CommandError("Вы не ввели уровень")
+
+        if level > 1000:
+            raise CommandError("Вы не можете поставить уровень больше 1000-го")
+        elif level < 0:
+            raise CommandError("Вы не можете поставить уровень меньше нуля")
 
         session = Session()
         award = session.query(ServerAwardOfLevels).filter_by(server_id=str(ctx.guild.id), role_id=str(role.id)).first()
