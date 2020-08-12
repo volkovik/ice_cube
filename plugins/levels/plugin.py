@@ -50,11 +50,7 @@ class Levels(Cog, name="Уровни"):
                         return
                 else:
                     session.delete(ignored)
-                    session.close()
-
-                if str(message.channel.id) == ignored.channel_id:
-                    session.close()
-                    return
+                    session.commit()
 
             ignored_roles = session.query(ServerIgnoreRolesListOfLevels).filter_by(server_id=str(server.id)).all()
 
@@ -75,6 +71,7 @@ class Levels(Cog, name="Уровни"):
                 retry_after = bucket.update_rate_limit(current)
 
                 if retry_after:
+                    session.close()
                     return
 
                 db_kwargs = {

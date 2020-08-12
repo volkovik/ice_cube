@@ -654,7 +654,7 @@ class LevelsSettings(Cog, name="Настройки"):
             title="Удаление всех наград",
             description=f"Вы уверены, что хотите удалить все роли из списка наград за уровень?\n\n"
                         f"{emojis['accept']} - Да, выключить\n"
-                        f"{emojis['cancel']} - Нет, отменить выключение"
+                        f"{emojis['cancel']} - Нет, отменить удаление"
         )
 
         message, answer = await send_message_with_reaction_choice(self.client, ctx, embed, emojis)
