@@ -76,14 +76,10 @@ def get_prefix(bot, message):
 client = commands.Bot(command_prefix=get_prefix)
 client.help_command = Help()
 
-cogs_path = "cogs/"  # Директория, где расположены модули
-for name_of_file in [f for f in os.listdir("cogs") if os.path.isfile(os.path.join("cogs", f))]:
-    client.load_extension(f"cogs.{name_of_file[:-3]}")  # Загрузка модуля из множества
-
 
 @client.event
 async def on_ready():
-    logger.info(f"Бот {client.user.name} был запущен")
+    logger.info(f"Бот {client.user.name} запущен")
 
     if DEV_MODE:
         logger.warning(f"Бот запущен в режиме разработки. Стандартный префикс бота: {DEFAULT_PREFIX}")
@@ -97,4 +93,11 @@ async def on_ready():
 
 
 if __name__ == '__main__':
+    plugins_path = "plugins"
+    plugins = ["levels", "rooms", "settings", "error", "fun", "information", ]
+
+    for plugin in plugins:
+        client.load_extension(f"{plugins_path}.{plugin}")
+        logging.info(f"\"{plugin}\" плагин загружен")
+
     client.run(os.environ.get("BOT_TOKEN"))
