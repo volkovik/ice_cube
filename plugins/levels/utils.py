@@ -23,7 +23,7 @@ def get_experience(level):
     if level <= 0:
         return 0
     else:
-        return 5 * level ** 2 + 100 * level + 200
+        return 80 * level ** 2 + 20 * level
 
 
 def get_level(exp):
@@ -36,9 +36,9 @@ def get_level(exp):
     :rtype: int
     """
 
-    a = 5
-    b = 100
-    c = 200 - exp
+    a = 80
+    b = 20
+    c = -exp
 
     D = b ** 2 - 4 * a * c
 
