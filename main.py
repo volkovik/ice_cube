@@ -9,7 +9,7 @@ from datetime import datetime
 from core.templates import Help
 from core.database import Base, Server
 
-__version__ = "0.3.0.3b"
+__version__ = "0.3.0.4b"
 
 # Основные константы
 DEV_MODE = os.environ.get("DEV_MODE") == "True"
