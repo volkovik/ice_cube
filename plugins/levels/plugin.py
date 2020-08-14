@@ -220,8 +220,6 @@ class Levels(Cog, name="Уровни"):
         else:
             top = list(enumerate(top, 1))
 
-        top = list(enumerate([(ctx.author, 555) for _ in range(1, 1001)]))
-
         max_page = len(top) // 10 + (1 if len(top) % 10 > 0 else 0)
 
         if page > max_page:
