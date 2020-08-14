@@ -1,4 +1,5 @@
 import discord
+import asyncio
 import datetime
 import random
 import sqlalchemy
@@ -8,7 +9,7 @@ from discord.ext.commands import CooldownMapping, Cooldown
 
 from main import Session
 from core.commands import Cog, Command
-from core.templates import SuccessfulMessage, DefaultEmbed as Embed
+from core.templates import ErrorMessage, SuccessfulMessage, DefaultEmbed as Embed
 from core.database import (UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels, ServerIgnoreChannelsListOfLevels,
                            ServerIgnoreRolesListOfLevels)
 
@@ -186,11 +187,14 @@ class Levels(Cog, name="Уровни"):
 
         await ctx.send(embed=message)
 
-    @commands.command(cls=Command, name="top")
+    @commands.command(
+        cls=Command, name="top",
+        usage={"страница": ("номер страницы топа (если указанная страницы нет, то вернёт самую первую)", False)}
+    )
     @level_system_is_on()
-    async def get_leaders_on_server(self, ctx):
+    async def get_leaders_on_server(self, ctx, page: int = 1):
         """
-        Топ 10 участников по уровню на сервере
+        Топ участников по уровню на сервере
         """
 
         server = ctx.guild
@@ -204,28 +208,79 @@ class Levels(Cog, name="Уровни"):
         top = []
 
         for user_from_db in users:
-            if len(top) == 10:
-                break
-
             user = server.get_member(int(user_from_db.user_id))
 
             if user is None:
                 continue
             else:
-                user_exp = user_from_db.experience
-
-                top.append(f"**#{len(top) + 1}:** `{user.display_name}`\n"
-                           f"Уровень: {get_level(user_exp)} | Опыт: {user_exp}")
+                top.append((user, user_from_db.experience))
 
         if not top:
             raise CommandError("Никто из пользователь на сервере ещё не получил опыт")
+        else:
+            top = list(enumerate(top, 1))
+
+        top = list(enumerate([(ctx.author, 555) for _ in range(1, 1001)]))
+
+        max_page = len(top) // 10 + (1 if len(top) % 10 > 0 else 0)
+
+        if page > max_page:
+            current_page = 1
+        else:
+            current_page = page
+
+        def get_page():
+            template = "**#{}:** `{}`\nУровень: {} | Опыт: {}"
+
+            return "\n".join(map(
+                lambda u: template.format(u[0], u[1][0].display_name, get_level(u[1][1]), u[1][1]),
+                top[10 * (current_page - 1):10 * current_page]
+            ))
 
         embed = Embed(
-            title="Топ 10 пользователей на сервере",
-            description="\n".join(top)
+            title="Топ пользователей на сервере",
+            description=get_page()
         )
+        if max_page > 1:
+            embed.set_footer(text=f"Стр. {current_page} из {max_page}")
 
-        await ctx.send(embed=embed)
+        message = await ctx.send(embed=embed)
+        
+        if max_page > 1:
+            emojis = {
+                "previous": "⬅️",
+                "next": "➡️"
+            }
+    
+            for e in emojis.values():
+                await message.add_reaction(e)
+    
+            def check(react, user):
+                if max_page <= current_page and 1 < current_page:
+                    return ctx.author == user and str(react) == emojis["previous"]
+                elif 1 >= current_page and max_page > current_page:
+                    return ctx.author == user and str(react) == emojis["next"]
+                elif 1 < current_page < max_page:
+                    return ctx.author == user and str(react) in emojis.values()
+    
+            while True:
+                try:
+                    reaction, _ = await self.client.wait_for('reaction_add', timeout=60.0, check=check)
+                except asyncio.TimeoutError:
+                    await message.clear_reactions()
+                    return
+                else:
+                    if str(reaction) == emojis["next"]:
+                        await message.remove_reaction(reaction, ctx.author)
+                        current_page += 1
+                    elif str(reaction) == emojis["previous"]:
+                        await message.remove_reaction(reaction, ctx.author)
+                        current_page -= 1
+    
+                    embed.description = get_page()
+                    embed.set_footer(text=f"Стр. {current_page} из {max_page}")
+    
+                    await message.edit(embed=embed)
 
     @commands.command(
         cls=Command, name="editlevel",
