@@ -303,9 +303,11 @@ class Levels(Cog, name="Уровни"):
         elif level < 0:
             raise CommandError("Вы не можете поставить уровень меньше нуля")
 
+        server = ctx.guild
+
         session = Session()
         db_kwargs = {
-            "server_id": str(ctx.guild.id),
+            "server_id": str(server.id),
             "user_id": str(user.id)
         }
         user_level = session.query(UserLevel).filter_by(**db_kwargs).first()
@@ -313,6 +315,53 @@ class Levels(Cog, name="Уровни"):
         if user_level is None:
             user_level = UserLevel(**db_kwargs)
             session.add(user_level)
+
+        lvl_user = get_level(user_level.experience)
+
+        if lvl_user < level:
+            awards = session.query(ServerAwardOfLevels).filter(
+                ServerAwardOfLevels.server_id == str(server.id),
+                ServerAwardOfLevels.level < level,
+                ServerAwardOfLevels.level > lvl_user
+            ).all()
+
+            roles = []
+
+            if awards is not None:
+                higher_bot_role = server.me.roles[-1]
+
+                for award in awards:
+                    role = server.get_role(int(award.role_id))
+
+                    if role is None:
+                        session.delete(award)
+                        session.commit()
+                    elif role < higher_bot_role:
+                        roles.append(role)
+
+            await user.add_roles(*roles)
+        else:
+            awards = session.query(ServerAwardOfLevels).filter(
+                ServerAwardOfLevels.server_id == str(server.id),
+                ServerAwardOfLevels.level > level,
+                ServerAwardOfLevels.level < lvl_user
+            ).all()
+
+            roles = []
+
+            if awards is not None:
+                higher_bot_role = server.me.roles[-1]
+
+                for award in awards:
+                    role = server.get_role(int(award.role_id))
+
+                    if role is None:
+                        session.delete(award)
+                        session.commit()
+                    elif role < higher_bot_role:
+                        roles.append(role)
+
+            await user.remove_roles(*roles)
 
         user_level.experience = get_experience(level)
         session.commit()
