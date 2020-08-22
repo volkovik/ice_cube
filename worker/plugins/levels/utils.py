@@ -2,8 +2,8 @@ import cmath
 from discord.ext import commands
 from string import Template
 
-from main import Session
-from core.database import ServerSettingsOfLevels
+from worker.main import Session
+from database.models import ServerSettingsOfLevels
 
 
 DEFAULT_LEVELUP_MESSAGE_FOR_SERVER = "$member_mention получил `$level уровень`"

@@ -3,10 +3,10 @@ from discord.ext import commands
 from discord import PermissionOverwrite as Permissions
 from discord.ext.commands import CommandError
 
-from main import Session
-from core.database import ServerSettingsOfRooms, UserSettingsOfRoom, UserPermissionsOfRoom, PermissionsForRoom
-from core.commands import Cog, Command
-from core.templates import SuccessfulMessage, DefaultEmbed as Embed
+from worker.main import Session
+from database.models import ServerSettingsOfRooms, UserSettingsOfRoom, UserPermissionsOfRoom, PermissionsForRoom
+from worker.core.commands import Cog, Command
+from worker.core.templates import SuccessfulMessage, DefaultEmbed as Embed
 
 # Настройки войса для пользователя, которым им владеет
 OWNER_PERMISSIONS = Permissions(manage_channels=True, connect=True, speak=True)

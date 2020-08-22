@@ -2,11 +2,11 @@ import random
 from discord.ext import commands
 from discord.ext.commands import CommandError
 
-from main import Session
-from core.commands import Cog, Group, Command
-from core.templates import SuccessfulMessage, DefaultEmbed as Embed, send_message_with_reaction_choice
-from core.database import (UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels, ServerIgnoreChannelsListOfLevels,
-                           ServerIgnoreRolesListOfLevels)
+from worker.main import Session
+from worker.core.commands import Cog, Group, Command
+from worker.core.templates import SuccessfulMessage, DefaultEmbed as Embed, send_message_with_reaction_choice
+from database.models import (UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels, ServerIgnoreChannelsListOfLevels,
+                             ServerIgnoreRolesListOfLevels)
 
 from .utils import (format_levelup_message, level_system_is_enabled, level_system_is_on,
                     DEFAULT_LEVELUP_MESSAGE_FOR_SERVER, DEFAULT_LEVELUP_MESSAGE_FOR_DM)

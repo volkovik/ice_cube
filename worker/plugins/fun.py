@@ -2,8 +2,8 @@ from random import choice
 from discord.ext import commands
 from discord.ext.commands import CommandError
 
-from core.commands import Cog, Command
-from core.templates import DefaultEmbed as Embed
+from worker.core.commands import Cog, Command
+from worker.core.templates import DefaultEmbed as Embed
 
 
 class Fun(Cog, name="Развлечения"):

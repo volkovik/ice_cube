@@ -1,10 +1,10 @@
 from discord.ext import commands
 from discord.ext.commands import CommandError
 
-from main import Session, DEFAULT_PREFIX
-from core.commands import Cog, Command
-from core.database import Server
-from core.templates import SuccessfulMessage
+from worker.main import Session, DEFAULT_PREFIX
+from worker.core.commands import Cog, Command
+from database.models import Server
+from worker.core.templates import SuccessfulMessage
 
 
 class Settings(Cog, name="Настройки"):

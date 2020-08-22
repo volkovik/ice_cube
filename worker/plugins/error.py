@@ -2,8 +2,8 @@ import re
 from discord.ext import commands
 from traceback import print_exception
 
-from core.templates import ErrorMessage
-from core.commands import Cog
+from worker.core.templates import ErrorMessage
+from worker.core.commands import Cog
 
 
 class ErrorHandler(Cog):

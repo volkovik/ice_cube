@@ -3,11 +3,11 @@ from discord import Status
 from discord.ext import commands
 from discord.ext.commands import CommandError
 
-from main import Session, __version__
-from core.database import User, UserScoreToAnotherUser
-from core.commands import Cog, Group, Command
-from core.templates import SuccessfulMessage, DefaultEmbed as Embed, send_message_with_reaction_choice
-from core.converts import convert_status, convert_activity_type, convert_voice_region, convert_verification_level
+from worker.main import Session, __version__
+from database.models import User, UserScoreToAnotherUser
+from worker.core.commands import Cog, Group, Command
+from worker.core.templates import SuccessfulMessage, DefaultEmbed as Embed, send_message_with_reaction_choice
+from worker.core.converts import convert_status, convert_activity_type, convert_voice_region, convert_verification_level
 
 
 class Information(Cog, name="Информация"):

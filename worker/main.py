@@ -6,8 +6,8 @@ from discord.ext import commands
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 
-from core.templates import Help
-from core.database import Base, Server
+from worker.core.templates import Help
+from database.models import Base, Server
 
 __version__ = "0.3.0"
 

@@ -2,10 +2,10 @@ import asyncio
 from discord.ext import commands
 from discord.ext.commands import CommandError
 
-from main import Session
-from core.database import ServerSettingsOfRooms
-from core.commands import Cog, Command
-from core.templates import SuccessfulMessage, ErrorMessage, DefaultEmbed as Embed
+from worker.main import Session
+from database.models import ServerSettingsOfRooms
+from worker.core.commands import Cog, Command
+from worker.core.templates import SuccessfulMessage, ErrorMessage, DefaultEmbed as Embed
 
 
 class RoomsSettings(Cog, name="Настройки"):

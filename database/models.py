@@ -1,7 +1,7 @@
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, String, Integer, Boolean, Enum
 
-from core.templates import PermissionsForRoom
+from worker.core.templates import PermissionsForRoom
 
 Base = declarative_base()
 

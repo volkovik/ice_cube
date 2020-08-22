@@ -7,11 +7,11 @@ from discord.ext import commands
 from discord.ext.commands import CommandError
 from discord.ext.commands import CooldownMapping, Cooldown
 
-from main import Session
-from core.commands import Cog, Command
-from core.templates import ErrorMessage, SuccessfulMessage, DefaultEmbed as Embed
-from core.database import (UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels, ServerIgnoreChannelsListOfLevels,
-                           ServerIgnoreRolesListOfLevels)
+from worker.main import Session
+from worker.core.commands import Cog, Command
+from worker.core.templates import SuccessfulMessage, DefaultEmbed as Embed
+from database.models import (UserLevel, ServerSettingsOfLevels, ServerAwardOfLevels, ServerIgnoreChannelsListOfLevels,
+                             ServerIgnoreRolesListOfLevels)
 
 from .utils import (level_system_is_on, get_level, get_experience, format_levelup_message,
                     DEFAULT_LEVELUP_MESSAGE_FOR_SERVER, DEFAULT_LEVELUP_MESSAGE_FOR_DM)
