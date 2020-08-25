@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ru" class="h-100">
+<head>
+    <meta charset="UTF-8">
+    <title>Ice Cube</title>
+    <link rel="icon" href="{{ url_for("static", filename="images/icon.png") }}">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+          integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+</head>
+<body class="text-white h-100" style="background-color: #36393f">
+<div class="container-fluid d-flex h-100 flex-column px-0">
+
+    <!--Navigation bar-->
+
+    <header>
+        <nav class="navbar navbar-dark navbar-expand-md" style="background-color: #47abee;">
+            <div class="container">
+                <a class="navbar-brand mx-auto" href="/">Ice Cube</a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target=".dual-collapse2">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse w-100 order-3 dual-collapse2">
+                    <ul class="navbar-nav ml-auto">
+                        <li class="nav-item active">
+                            <a class="nav-link" href="/login">Войти</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!--Navigation bar-->
+
+    <!--Content-->
+
+    {% block content %}
+        Здесь ничего нет.
+    {% endblock %}
+
+    <!--Content-->
+
+</div>
+
+<!--Footer-->
+
+<footer style="background-color: #202225">
+    <div class="container">
+        <div class="row py-5">
+            <div class="col">
+                <p class="text-muted">&copy volkovik 2020. Все права защищены</p>
+            </div>
+            <div class="col d-flex justify-content-end">
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="https://discord.gg/atxwBRB">Сервер поддержки</a>
+                    </li>
+                </ul>
+                <ul class="nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="https://github.com/volkovik">Разработчик</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<!--Footer-->
+
+<!--Bootstrap scripts-->
+
+<script src="https://code.jquery.com/jquery-3.2.1.slim.min.js"
+        integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+        crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js"
+        integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+        crossorigin="anonymous"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"
+        integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+        crossorigin="anonymous"></script>
+
+<!--Bootstrap scripts-->
+
+</body>
+</html>

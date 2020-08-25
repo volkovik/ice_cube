@@ -1,10 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Ice Cube</title>
-</head>
-<body>
-    <h1>Ice Cube Web Page</h1>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block content %}
+    <main class="container my-auto text-center" role="main">
+        <h1 class="display-1">Ice Cube</h1>
+        <p>Сделайте свой Discord сервер лучше.</p>
+        <div class="d-flex flex-column flex-md-row justify-content-center">
+            <a href="/invite_bot" class="btn text-white mx-2 my-2" style="background-color: #47abee;">
+                Добавить бота
+            </a>
+            <a href="/guilds" class="btn text-white mx-2 my-2" style="background-color: #47abee;">
+                Настройки серверов
+            </a>
+        </div>
+    </main>
+{% endblock %}
