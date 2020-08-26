@@ -53,7 +53,7 @@ def login_callback():
 
     session["oauth2_token"] = token
 
-    return redirect(url_for(".index"))
+    return redirect(url_for(".guilds_list"))
 
 
 @app.route("/logout")
@@ -64,6 +64,27 @@ def logout():
         abort(401)
 
     return redirect(url_for(".index"))
+
+
+@app.route("/guilds")
+def guilds_list():
+    token = session.get("oauth2_token")
+
+    if not token:
+        abort(401)
+
+    discord = make_session(token=session.get("oauth2_token"))
+    user = get_user(discord)
+    guilds = get_managed_guilds(get_guilds(discord))
+    print(guilds)
+
+    data = {
+        "username": user["username"],
+        "user_avatar_url": f"https://cdn.discordapp.com/avatars/{user['id']}/{user['avatar']}.png",
+        "guilds": guilds
+    }
+
+    return render_template("guilds.html", **data)
 
 
 if __name__ == '__main__':

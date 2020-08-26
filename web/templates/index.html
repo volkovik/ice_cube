@@ -8,9 +8,15 @@
             <a href="/invite_bot" class="btn text-white mx-2 my-2" style="background-color: #47abee;">
                 Добавить бота
             </a>
-            <a href="/guilds" class="btn text-white mx-2 my-2" style="background-color: #47abee;">
-                Настройки серверов
-            </a>
+            {% if username is undefined %}
+                <a href="/login" class="btn text-white mx-2 my-2" style="background-color: #47abee;">
+                    Настройки серверов
+                </a>
+            {% else %}
+                <a href="/guilds" class="btn text-white mx-2 my-2" style="background-color: #47abee;">
+                    Настройки серверов
+                </a>
+            {% endif %}
         </div>
     </main>
 {% endblock %}

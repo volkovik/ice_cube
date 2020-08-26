@@ -34,3 +34,11 @@ def make_session(token=None, state=None, scope=None):
 
 def get_user(oauth2_session):
     return oauth2_session.get(API_ENDPOINT + "/users/@me").json()
+
+
+def get_guilds(oauth2_session):
+    return oauth2_session.get(API_ENDPOINT + "/users/@me/guilds").json()
+
+
+def get_managed_guilds(guilds):
+    return list(filter(lambda g: (g["owner"] is True) or bool((int(g["permissions"]) >> 5) & 1), guilds))

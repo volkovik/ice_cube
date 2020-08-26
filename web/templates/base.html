@@ -2,13 +2,13 @@
 <html lang="ru" class="h-100">
 <head>
     <meta charset="UTF-8">
-    <title>Ice Cube</title>
+    <title>{% block title %} Ice Cube {% endblock %}</title>
     <link rel="icon" href="{{ url_for("static", filename="img/logo.png") }}">
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
           integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
 </head>
 <body class="text-white h-100" style="background-color: #36393f">
-<div class="container-fluid d-flex h-100 flex-column px-0">
+<div class="container-fluid d-flex flex-column px-0" style="min-height: 100%">
 
     <!--Navigation bar-->
 
@@ -34,6 +34,7 @@
                                     {{ username|e }}
                                 </a>
                                 <div class="dropdown-menu" aria-labelledby="navbarDropdown">
+                                    <a class="dropdown-item" href="/guilds">Сервера</a>
                                     <a class="dropdown-item" href="/logout">Выйти</a>
                                 </div>
                             </li>
@@ -67,12 +68,12 @@
             <div class="col d-flex justify-content-end">
                 <ul class="nav flex-column">
                     <li class="nav-item">
-                        <a class="nav-link active" href="https://discord.gg/atxwBRB">Сервер поддержки</a>
+                        <a class="nav-link active" href="https://discord.gg/atxwBRB" target="_blank">Сервер поддержки</a>
                     </li>
                 </ul>
                 <ul class="nav">
                     <li class="nav-item">
-                        <a class="nav-link" href="https://github.com/volkovik">Разработчик</a>
+                        <a class="nav-link" href="https://github.com/volkovik" target="_blank">Разработчик</a>
                     </li>
                 </ul>
             </div>
