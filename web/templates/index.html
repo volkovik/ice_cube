@@ -5,18 +5,17 @@
         <h1 class="display-1">Ice Cube</h1>
         <p>Сделайте свой Discord сервер лучше.</p>
         <div class="d-flex flex-column flex-md-row justify-content-center">
-            <a href="/invite_bot" class="btn text-white mx-2 my-2" style="background-color: #47abee;">
+            <a href="/invite_bot" class="btn mx-2 my-2">
                 Добавить бота
             </a>
             {% if username is undefined %}
-                <a href="/login" class="btn text-white mx-2 my-2" style="background-color: #47abee;">
-                    Настройки серверов
-                </a>
+                {% set url_for_guilds_btn = "/login" %}
             {% else %}
-                <a href="/guilds" class="btn text-white mx-2 my-2" style="background-color: #47abee;">
-                    Настройки серверов
-                </a>
+                {% set url_for_guilds_btn = "/guilds" %}
             {% endif %}
+            <a href="{{ url_for_guilds_btn }}" class="btn mx-2 my-2">
+                Настройки серверов
+            </a>
         </div>
     </main>
 {% endblock %}

@@ -1,0 +1,77 @@
+body {
+    background-color: #36393f;
+}
+
+footer {
+    background-color: #202225;
+}
+
+#page {
+    min-height: 100%;
+}
+
+#navbar {
+    background-color: #47abee;
+}
+
+/*Cards*/
+
+#settings-card {
+    background-color: #303237;
+    border-color: #202225;
+}
+
+.card-guild {
+    width: 20.5rem;
+    background-color: #202225;
+}
+
+.card-divider {
+    border-color: #202225;
+}
+
+/*Form controls*/
+
+input[type=text] {
+    background-color: #2b2d31;
+    border-color: #202225;
+    color: white;
+}
+
+input[type=text]:focus {
+    background-color: #2b2d31;
+    border-color: #47abee;
+    color: white;
+}
+
+.form-control {
+    background-color: #2b2d31;
+    border-color: #202225;
+    color: white;
+}
+
+.form-control:focus {
+    background-color: #2b2d31;
+    border-color: #47abee;
+    color: white
+}
+
+.btn {
+    background-color: #47abee;
+    color: white;
+}
+
+.btn:hover {
+    background-color: #1695e9;
+    color: white;
+}
+
+.nav-pills .nav-link {
+    color: white;
+}
+
+.nav-pills .nav-link.active {
+    background-color: #47abee;
+}
+
+

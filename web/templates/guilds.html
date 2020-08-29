@@ -10,21 +10,19 @@
         <div class="row mt-3 justify-content-center">
             {% for g in guilds %}
                 <div class="col-auto mb-3">
-                    <div class="card text-white" style="width: 20.5rem; background-color: #202225;">
+                    <div class="card card-guild text-white">
                         <div class="card-body">
                             <p class="card-text">
                                 {% if g.icon == None %}
                                     <img src="{{ url_for("static", filename="img/default_avatar.png") }}" alt=""
-                                     class="d-inline-block rounded mr-2" width="50px" height="50px">
+                                         class="d-inline-block rounded mr-2" width="50px" height="50px">
                                 {% else %}
                                     <img src="https://cdn.discordapp.com/icons/{{ g.id|e }}/{{ g.icon|e }}.png" alt=""
-                                     class="d-inline-block rounded mr-2" width="50px" height="50px">
+                                         class="d-inline-block rounded mr-2" width="50px" height="50px">
                                 {% endif %}
                                 {{ g.name|e }}
                             </p>
-                            <a href="#" class="btn text-white float-right" style="background-color: #47abee">
-                                Настройки
-                            </a>
+                            <a href="/guild/{{ g.id }}" class="btn float-right">Настройки</a>
                         </div>
                     </div>
                 </div>

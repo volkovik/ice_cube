@@ -1,3 +1,4 @@
+import os
 from flask import Flask, render_template, redirect, request, url_for, abort
 
 from web.utilities import *
@@ -5,6 +6,21 @@ from web.utilities import *
 
 app = Flask("Ice Cube")
 app.secret_key = CLIENT_SECRET
+
+
+@app.context_processor
+def override_url_for():
+    return dict(url_for=dated_url_for)
+
+
+def dated_url_for(endpoint, **values):
+    if endpoint == "static":
+        filename = values.get("filename", None)
+        if filename:
+            file_path = os.path.join(app.root_path, endpoint, filename)
+            values["q"] = int(os.stat(file_path).st_mtime)
+
+    return url_for(endpoint, **values)
 
 
 @app.route("/")
@@ -73,18 +89,46 @@ def guilds_list():
     if not token:
         abort(401)
 
-    discord = make_session(token=session.get("oauth2_token"))
+    discord = make_session(token)
     user = get_user(discord)
     guilds = get_managed_guilds(get_guilds(discord))
     print(guilds)
 
     data = {
         "username": user["username"],
-        "user_avatar_url": f"https://cdn.discordapp.com/avatars/{user['id']}/{user['avatar']}.png",
         "guilds": guilds
     }
 
     return render_template("guilds.html", **data)
+
+
+@app.route("/guild/<int:server_id>")
+def guild_settings(server_id):
+    token = session.get("oauth2_token")
+
+    if not token:
+        abort(401)
+
+    discord = make_session(token)
+    managed_guilds = get_managed_guilds(get_guilds(discord))
+    data = {}
+
+    for g in managed_guilds:
+        if g["id"] == str(server_id):
+            data["guild"] = g
+            break
+    else:
+        abort(403)
+
+    user = get_user(discord)
+    data["username"] = user["username"]
+
+    settings = {
+        "prefix": ".",
+        "levelup_message": "$member_mention получил `$level уровень`"
+    }
+
+    return render_template("guild_settings.html", **data, settings=settings)
 
 
 if __name__ == '__main__':

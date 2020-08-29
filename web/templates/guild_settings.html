@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Ice Cube - {{ guild.name|e }}
+{% endblock %}
+
+{% block content %}
+    <div class="container h-100 mb-4">
+        <h1 class="my-5">{{ guild.name|e }}</h1>
+
+        <!-- Card with settings of server -->
+
+        <div id="settings-card" class="card py-3 px-4">
+
+            <!-- Controls of card's page -->
+
+            <ul class="nav nav-pills" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <a id="pills-general-tab" class="nav-link active" data-toggle="pill" href="#general" role="tab"
+                       aria-controls="pills-home" aria-selected="true">Основное</a>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <a id="pills-profile-tab" class="nav-link" data-toggle="pill" href="#rooms" role="tab"
+                       aria-controls="pills-profile" aria-selected="false">Приватные комнаты</a>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <a id="pills-contact-tab" class="nav-link" data-toggle="pill" href="#levels" role="tab"
+                       aria-controls="pills-contact" aria-selected="false">Рейтинг участников</a>
+                </li>
+            </ul>
+
+            <!-- Controls of card's page -->
+
+            <hr class="card-divider">
+
+            <!-- Pages of server's settings -->
+
+            <div class="tab-content mx-3">
+
+                <!-- General -->
+
+                <div id="general" class="tab-pane fade show active" role="tabpanel" aria-labelledby="pills-home-tab">
+                    <h3>Основное</h3>
+                    <div class="container mt-3">
+                        <form>
+                            <label for="prefix">Префикс бота на сервере</label>
+                            <input id="prefix" class="form-control" type="text" value="{{ settings.prefix }}">
+                            <small id="prefixHelp" class="form-text text-muted">
+                                Префикс - это текст, который индефицирует команды в текстовых каналах от обычных
+                                сообщение. Пример: <code>.help</code> (<code>.</code> - это префикс)
+                            </small>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- General -->
+
+                <!-- Rooms -->
+
+                <div id="rooms" class="tab-pane fade" role="tabpanel" aria-labelledby="pills-profile-tab">
+                    <h3>Приватные комнаты</h3>
+                    <div class="container mt-3">
+                        <form>
+                            <div class="custom-control custom-checkbox">
+                                <input id="toggleRooms" type="checkbox" class="custom-control-input">
+                                <label class="custom-control-label" for="toggleRooms">
+                                    Включить приватные комнаты
+                                </label>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Rooms -->
+
+                <!-- Levels -->
+
+                <div id="levels" class="tab-pane fade" role="tabpanel" aria-labelledby="pills-contact-tab">
+                    <h3>Рейтинг участников</h3>
+                    <div class="container mt-3">
+                        <form>
+                            <div class="custom-control custom-checkbox">
+                                <input id="toggleLevels" class="custom-control-input" type="checkbox">
+                                <label class="custom-control-label" for="toggleLevels">
+                                    Включить рейтинг участников
+                                </label>
+                            </div>
+                            <h5 class="mt-3">Оповещение о повышении уровня</h5>
+                            <div class="custom-control custom-checkbox mb-2">
+                                <input id="toggleNotifyAboutLevelUp" class="custom-control-input" type="checkbox">
+                                <label class="custom-control-label" for="toggleNotifyAboutLevelUp">
+                                    Отправлять сообщения о новом уровне
+                                </label>
+                            </div>
+                            <label for="levelupText">Текст сообщения о новом уровне</label>
+                            <input class="form-control" type="text" value="{{ settings.levelup_message }}">
+                            <small id="levelupText" class="form-text text-muted">
+                                Данный текст будет присылаться пользователю, когда он получил новый уровень
+                            </small>
+                            <label for="levelupDestination">Текстовый канал, где будет присылаться сообщение</label>
+                            <select id="levelupDestination" class="form-control">
+                                <option>ЛС пользователя</option>
+                                <option>Канал, где был получен уровень</option>
+                            </select>
+                            <h5 class="mt-3">Награды за уровни</h5>
+                            <div class="input-group">
+                                <input type="text" id="addAward" class="form-control"
+                                       placeholder="Число от 1 до 1000">
+                                <select class="form-control" id="editAward"
+                                        aria-label="роли">
+                                    <option value="1" selected>Первая роль</option>
+                                    <option value="2">Вторая роль</option>
+                                    <option value="3">Третья роль</option>
+                                </select>
+                                <div class="input-group-append">
+                                    <button class="btn" type="button">Добавить</button>
+                                </div>
+                            </div>
+                            <h5 class="mt-3">Игнорируемые каналы</h5>
+                            <div class="input-group">
+                                <select class="form-control" id="ignoredChannels">
+                                    <option value="1" selected>Первый канал</option>
+                                    <option value="2">Второй канал</option>
+                                    <option value="3">Третий канал</option>
+                                </select>
+                                <div class="input-group-append">
+                                    <button class="btn" type="button">Добавить</button>
+                                </div>
+                            </div>
+                            <h5 class="mt-3">Игнорируемые роли</h5>
+                            <div class="input-group">
+                                <select class="form-control" id="ignoredRoles">
+                                    <option value="1" selected>Первая роль</option>
+                                    <option value="2">Вторая роль</option>
+                                    <option value="3">Третья роль</option>
+                                </select>
+                                <div class="input-group-append">
+                                    <button class="btn" type="button">Добавить</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Levels -->
+
+            </div>
+
+            <!-- Pages of server's settings -->
+
+        </div>
+
+        <!-- Card with settings of server -->
+
+    </div>
+{% endblock %}
