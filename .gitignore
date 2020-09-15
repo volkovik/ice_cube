@@ -137,12 +137,6 @@ dmypy.json
 # PyCharm settings
 .idea
 
-# Fordel with logs
-/logs
-
 # SQLite
 *.db
 *.sqlite3
-
-# Alembic migrations
-migrations/versions

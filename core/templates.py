@@ -1,14 +1,68 @@
-import discord
+import asyncio
 from enum import Enum
 from itertools import groupby
 from discord import Embed
+from discord.ext import commands
 from discord.ext.commands import HelpCommand
+
+
+async def send_message_with_reaction_choice(client: commands.Bot, ctx: commands.Context, embed: Embed, emojis: dict):
+    """
+    Прислать сообщение с выбором ответа в виде реакций
+
+    :param client: бот
+    :type client: commands.Bot
+    :param ctx: информация о сообщении
+    :type ctx: commands.Context
+    :param embed: Embed интерфейс
+    :type embed: Embed
+    :param emojis: словарь со эмоджи
+    :type emojis: dict
+    :return: сообщение и выбор пользователя
+    :rtype: discord.Message and str
+    """
+
+    message = await ctx.send(embed=embed)
+
+    for e in emojis.values():
+        await message.add_reaction(e)
+
+    def check(react, user):
+        return ctx.author == user and str(react) in emojis.values()
+
+    try:
+        reaction, _ = await client.wait_for('reaction_add', timeout=60.0, check=check)
+    except asyncio.TimeoutError:
+        await message.clear_reactions()
+        await message.edit(embed=ErrorMessage("Превышено время ожидания"))
+        return message, None
+    else:
+        await message.clear_reactions()
+
+        answer = None
+
+        for k, v in emojis.items():
+            if v == str(reaction.emoji):
+                answer = k
+                break
+
+        return message, answer
 
 
 class PermissionsForRoom(Enum):
     banned = False
     default = None
     allowed = True
+
+
+class DefaultEmbed(Embed):
+    """
+    Embed сообщение с цветом по стандарту
+    """
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("color", 0xAEE4FC)
+        super().__init__(**kwargs)
 
 
 class ErrorMessage(Embed):
@@ -48,7 +102,7 @@ class Help(HelpCommand):
         self.width = options.pop('width', 80)  # максимальное количество символов для описания
         self.sort_commands = options.pop('sort_commands', True)  # сортировка команд и категорий по алфавиту
         self.commands_heading = options.pop('commands_heading', "Команды")  # название колонки для групп команд
-        self.embed = discord.Embed()  # Embed-шаблон
+        self.embed = DefaultEmbed()  # Embed-шаблон
 
         super().__init__(**options)
 
@@ -70,7 +124,7 @@ class Help(HelpCommand):
         Очистка Embed-шаблона
         """
 
-        self.embed = discord.Embed()
+        self.embed = DefaultEmbed()
 
     def get_command_signature(self, command, args=False):
         """
@@ -132,7 +186,7 @@ class Help(HelpCommand):
             self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
             self.embed.add_field(
                 name="Аргументы",
-                value=" ".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
+                value="\n".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
                                 for key, params in command.usage.items()])
             )
 
@@ -152,7 +206,7 @@ class Help(HelpCommand):
             self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
             self.embed.add_field(
                 name="Аргументы",
-                value=" ".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
+                value="\n".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
                                 for key, params in group.usage.items()])
             )
 
@@ -184,6 +238,17 @@ class Help(HelpCommand):
         """
 
         return f"Я не нашёл команду `{name}`"
+
+    async def subcommand_not_found(self, command, string):
+        """
+        Текст ошибки, при ненахождении введённой сабкоманды
+
+        :param command: команда
+        :param string: название ошибочной сабкоманды, которую пытались вызвать
+        :return: сообщение об ошибке
+        """
+
+        return f"Команда `{command.qualified_name} {string}` не найдена"
 
     async def send_error_message(self, error):
         """
