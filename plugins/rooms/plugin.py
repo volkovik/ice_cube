@@ -116,11 +116,12 @@ class Rooms(Cog, name="Приватные комнаты"):
 
     @commands.Cog.listener("on_guild_channel_delete")
     async def rooms_master_check_deleted_channels(self, channel):
-        """Checking if a deleted channel is a voice channel that creates rooms"""
+        """Checking if a deleted channel is a voice channel that creates rooms or it's a category that contains rooms"""
         session = Session()
         settings = get_server_settings(session, channel.guild)
 
-        if settings is not None and settings.creator == channel.id:
+        if settings is not None and (settings.creator == channel.id or
+                                     channel.guild.get_channel(settings.creator).category is None):
             session.delete(settings)
             session.commit()
 
