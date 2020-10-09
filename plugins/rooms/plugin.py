@@ -218,7 +218,7 @@ class Rooms(Cog, name="Приватные комнаты"):
 
         session.close()
 
-    @commands.group(name="room")
+    @commands.group(name="room", aliases=["r"])
     async def room_settings(self, ctx):
         """Настройка вашей приватной комнаты"""
         user = ctx.author

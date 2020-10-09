@@ -116,7 +116,7 @@ class Information(Cog, name="Информация"):
         session.close()
 
     @commands.group(
-        cls=Group, name="rate", invoke_without_command=True,
+        cls=Group, name="rep", aliases=["rate"], invoke_without_command=True,
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
     )
     async def set_reputation_for_user(self, ctx, user: commands.MemberConverter):
@@ -231,7 +231,7 @@ class Information(Cog, name="Информация"):
         session.close()
 
     @set_reputation_for_user.command(
-        cls=Command, name="up",
+        cls=Command, name="+", aliases=["up"],
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
     )
     async def rate_up_user(self, ctx, user: commands.MemberConverter):
@@ -270,7 +270,7 @@ class Information(Cog, name="Информация"):
         session.close()
 
     @set_reputation_for_user.command(
-        cls=Command, name="down",
+        cls=Command, name="-", aliases=["down"],
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
     )
     async def rate_down_user(self, ctx, user: commands.MemberConverter):
