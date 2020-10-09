@@ -1,3 +1,5 @@
+from typing import Union
+
 import discord
 from discord import PermissionOverwrite as Permissions
 from discord.ext import commands
@@ -13,6 +15,15 @@ from plugins.rooms.utils import get_server_settings, get_user_settings, add_user
 
 # user's permissions for his room
 OWNER_PERMISSIONS = Permissions(manage_channels=True, connect=True, speak=True)
+
+
+def get_owner(channel: discord.VoiceChannel) -> Union[discord.Member, None]:
+    owner = [m for m, p in channel.overwrites.items() if p == OWNER_PERMISSIONS]
+
+    if len(owner) == 0:
+        return None
+    else:
+        return owner[0]
 
 
 def room_is_locked_predicate(ctx: commands.Context):
@@ -60,6 +71,10 @@ class Rooms(Cog, name="Приватные комнаты"):
             return
         else:
             rooms_category = creator_rooms.category  # a category that will contain rooms
+
+        if before.channel is not None and get_owner(before.channel) == user and after.channel == creator_rooms:
+            await user.move_to(before.channel)
+            return
 
         # when the user have leaved the voice channel
         if before.channel:
@@ -142,11 +157,10 @@ class Rooms(Cog, name="Приватные комнаты"):
             session.commit()
         else:
             # if the channel is a room, we will find special permissions for owner of this room
-            owner = [m for m, p in before.overwrites.items() if p == OWNER_PERMISSIONS]
+            owner = get_owner(before)
 
             # if the channel has special permissions, start check all changes
-            if len(owner) != 0:
-                owner = owner[0]
+            if owner:
                 user_settings = get_user_settings(session, server, owner)
 
                 room = after
