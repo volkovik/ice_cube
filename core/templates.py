@@ -187,7 +187,15 @@ class Help(HelpCommand):
             self.embed.add_field(
                 name="Аргументы",
                 value="\n".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
-                                for key, params in command.usage.items()])
+                                 for key, params in command.usage.items()])
+            )
+
+        if command.usage:
+            self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
+            self.embed.add_field(
+                name="Аргументы",
+                value="\n".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
+                                 for key, params in command.usage.items()])
             )
 
         await self.context.send(embed=self.embed)
@@ -202,18 +210,23 @@ class Help(HelpCommand):
         self.embed.title = f"Команда \"{group.name}\""
         self.embed.description = f"`{self.get_command_signature(group, args=True)}` - {group.short_doc}"
 
+        if group.aliases:
+            self.embed.description += "\n Данную команду также можно вызвать как: " + ", ".join(
+                [f"`{self.clean_prefix}{i}`" for i in group.aliases]
+            )
+
         if group.usage:
             self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
             self.embed.add_field(
                 name="Аргументы",
                 value="\n".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
-                                for key, params in group.usage.items()])
+                                 for key, params in group.usage.items()])
             )
 
-        if group.all_commands:
+        if group.commands:
             commands = []
 
-            for cmd in group.all_commands.values():
+            for cmd in group.commands:
                 try:
                     if await cmd.can_run(self.context):
                         commands.append(f"`{self.get_command_signature(cmd, args=False)}` - {cmd.short_doc}")

@@ -1,494 +1,281 @@
+from typing import Union
+
 import discord
-from discord.ext import commands
 from discord import PermissionOverwrite as Permissions
+from discord.ext import commands
 from discord.ext.commands import CommandError
 
-from main import Session
-from core.database import ServerSettingsOfRooms, UserSettingsOfRoom, UserPermissionsOfRoom, PermissionsForRoom
 from core.commands import Cog, Command
-from core.templates import SuccessfulMessage, DefaultEmbed as Embed
+from core.database import UserPermissionsOfRoom
+from core.templates import PermissionsForRoom, DefaultEmbed as Embed, SuccessfulMessage
+from main import Session
 
-# Настройки войса для пользователя, которым им владеет
+from plugins.rooms.utils import get_server_settings, get_user_settings, add_user_settings, get_all_permissions, \
+    get_permissions, add_permissions
+
+# user's permissions for his room
 OWNER_PERMISSIONS = Permissions(manage_channels=True, connect=True, speak=True)
 
 
-def get_user_settings(server, owner):
-    """
-    Выдаёт настройки из базы данных комнаты пользователя на определённом сервере
+def get_owner(channel: discord.VoiceChannel) -> Union[discord.Member, None]:
+    owner = [m for m, p in channel.overwrites.items() if p == OWNER_PERMISSIONS]
 
-    :param server: сервер, на котором находится комната
-    :type server: discord.Guild
-    :param owner: пользователь владеющей комнатой
-    :type owner: discord.Member or discord.User
-    :return: настроки комнаты, если есть данные в базе данных
-    :rtype: dict or None
-    """
-
-    session = Session()
-
-    settings_from_db = session.query(UserSettingsOfRoom).filter_by(
-        server_id=str(server.id), owner_id=str(owner.id)
-    ).first()
-
-    session.close()
-
-    if settings_from_db is not None:
-        settings = settings_from_db.__dict__
-        settings["name"] = owner.display_name if settings["name"] is None else settings["name"]
-
-        return settings_from_db.__dict__
-    else:
+    if len(owner) == 0:
         return None
-
-
-def update_user_settings(server, owner, **settings):
-    """
-    Обновление пользовательских настроек комнат в базе данных
-
-    :param server: сервер, на котором находится комната
-    :type server: discord.Guild
-    :param owner: пользователь владеющей комнатой
-    :type owner: discord.Member or discord.User
-    :param settings: параметры, которые должны быть изменены
-    """
-
-    session = Session()
-
-    db_kwargs = {
-        "server_id": str(server.id),
-        "owner_id": str(owner.id)
-    }
-
-    settings_from_db = session.query(UserSettingsOfRoom).filter_by(**db_kwargs).first()
-
-    if settings_from_db is None:
-        settings_from_db = UserSettingsOfRoom(**db_kwargs)
-        session.add(settings_from_db)
-
-    if owner.voice is not None and owner.voice.channel.overwrites_for(owner) == OWNER_PERMISSIONS:
-        room = owner.voice.channel
-        perms_connection = Permissions(connect=False)
-
-        # Настройки из войса пользователя
-        settings.setdefault("is_locked", room.overwrites_for(server.default_role) == perms_connection)
-        settings.setdefault("user_limit", room.user_limit)
-        settings.setdefault("bitrate", room.bitrate)
-        settings.setdefault("name", room.name if room.name != owner.display_name else None)
     else:
-        settings_db = get_user_settings(server, owner)
-
-        if settings_db is not None:
-            # Настройки из базы данных
-            settings.setdefault("is_locked", settings_db["is_locked"])
-            settings.setdefault("user_limit", settings_db["user_limit"])
-            settings.setdefault("bitrate", settings_db["bitrate"])
-            settings.setdefault("name", settings_db["name"])
-        else:
-            # Настройки, которые стоят по умолчанию, когда пользователь создаёт комнату впервые
-            settings.setdefault("is_locked", False)
-            settings.setdefault("user_limit", 0)
-            settings.setdefault("bitrate", 64)
-            settings.setdefault("name", None)
-
-    settings_from_db.is_locked = settings["is_locked"]
-    settings_from_db.user_limit = settings["user_limit"]
-    settings_from_db.bitrate = settings["bitrate"]
-    settings_from_db.name = settings["name"]
-
-    session.commit()
-    session.close()
+        return owner[0]
 
 
-def get_permissions_for_all_users(server, owner):
-    """
-    Выдаёт словарь с правами пользователей
-
-    :param server: сервер, на котором находится комната
-    :type server: discord.Guild
-    :param owner: пользователь владеющей комнатой
-    :type owner: discord.Member or discord.User
-    :return: словарь с правами пользователей
-    :rtype: dict
-    """
-
+def room_is_locked_predicate(ctx: commands.Context):
+    """Returns user's room is locked"""
     session = Session()
-
-    all_permissions = session.query(UserPermissionsOfRoom).filter_by(
-        server_id=str(server.id), owner_id=str(owner.id)
-    ).all()
-
-    users = {}
-
-    for user in all_permissions:
-        member = server.get_member(int(user.user_id))
-
-        if member is not None:
-            users[member] = Permissions(connect=user.permissions.value)
-        else:
-            session.delete(user)
-
-    session.commit()
+    settings = get_user_settings(session, ctx.guild, ctx.author)
     session.close()
+    return settings is not None and settings.is_locked
 
-    return users
 
+def room_is_locked():
+    """Checks user's room is locked"""
+    return commands.check(room_is_locked_predicate)
 
-def update_permissions_for_all_users(server, owner, permissions):
-    """
-    Обновляет список пользователей, сопостовляя его со списком из базы данных
 
-    :param server: сервер, на котором находится комната
-    :type server: discord.Guild
-    :param owner: пользователь владеющей комнатой
-    :type owner: discord.Member or discord.User
-    :param permissions: словарь из пользователей и их прав, которые нужно заменить на текущий список в базе данных
-    :type permissions: dict
-    """
+def room_is_not_locked():
+    """Checks user's room isn't locked"""
+    def predicate(ctx):
+        return not room_is_locked_predicate(ctx)
 
-    session = Session()
-
-    db_kwargs = {
-        "server_id": str(server.id),
-        "owner_id": str(owner.id)
-    }
-
-    data_from_db = session.query(UserPermissionsOfRoom).filter_by(**db_kwargs).all()
-
-    permissions_from_db = {}
-
-    for user in data_from_db:
-        member = server.get_member(int(user.user_id))
-
-        if member is not None:
-            permissions_from_db[member] = user.permissions
-        else:
-            session.delete(user)
-
-    added = [(m, p) for m, p in permissions.items() if m not in permissions_from_db]
-    deleted = [(m, p) for m, p in permissions_from_db.items() if m not in permissions]
-    modified = [(m, p) for m, p in permissions.items()
-                if m in permissions_from_db and permissions_from_db[m] != permissions[m]]
-
-    for member, perms in added:
-        session.add(UserPermissionsOfRoom(**db_kwargs, user_id=str(member.id), permissions=perms))
-
-    for member, _ in deleted:
-        session.query(UserPermissionsOfRoom).filter_by(**db_kwargs, user_id=str(member.id)).delete()
-
-    for member, perms in modified:
-        session.query(UserPermissionsOfRoom).filter_by(**db_kwargs, user_id=str(member.id)).first().permissions = perms
-
-    session.commit()
-    session.close()
-
-
-def update_permissions_for_user(server, owner, user, permissions):
-    """
-    Даёт права доступа пользователю в базе данных
-
-    :param server: сервер, на котором находится комната
-    :type server: discord.Guild
-    :param owner: пользователь владеющей комнатой
-    :type owner: discord.Member or discord.User
-    :param user: пользователь, которому нужно дать доступ
-    :type user: discord.Member or discord.User
-    :param permissions: права для пользователя
-    :type permissions: PermissionsForRoom
-    """
-
-    session = Session()
-
-    db_kwargs = {
-        "server_id": str(server.id),
-        "owner_id": str(owner.id),
-        "user_id": str(user.id)
-    }
-
-    permissions_for_user = session.query(UserPermissionsOfRoom).filter_by(**db_kwargs).first()
-
-    if permissions_for_user is None:
-        permissions_for_user = UserPermissionsOfRoom(**db_kwargs)
-        session.add(permissions_for_user)
-
-    permissions_for_user.permissions = permissions
-
-    session.commit()
-    session.close()
-
-
-def remove_permissions_for_user(server, owner, user):
-    """
-    Забирает права доступа у пользователя в базе данных
-
-    :param server: сервер, на котором находится комната
-    :type server: discord.Guild
-    :param owner: пользователь владеющей комнатой
-    :type owner: discord.Member or discord.User
-    :param user: пользователь, у которого нужно убрать доступ к комнате
-    :type user: discord.Member or discord.User
-    """
-
-    session = Session()
-
-    permissions_for_user = session.query(UserPermissionsOfRoom).filter_by(
-        server_id=str(server.id), owner_id=str(owner.id), user_id=str(user.id)
-    ).first()
-
-    if permissions_for_user is not None:
-        session.delete(permissions_for_user)
-
-    session.commit()
-    session.close()
-
-
-def get_room_creator(server):
-    """
-    Выдача канала, который создаёт комнаты для пользователя
-
-    :param server: сервер, на котром нужно найти канал
-    :type server: discord.Guild
-    :return: голосовой канал, если в базе данных есть данные
-    :rtype: discord.VoiceChannel or None
-    """
-
-    session = Session()
-
-    channel_from_db = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
-
-    channel = server.get_channel(int(channel_from_db.channel_id_creates_rooms)) if channel_from_db is not None else None
-
-    if channel is None:
-        delete_room_creator(server)
-
-    session.close()
-
-    return channel
-
-
-def delete_room_creator(server):
-    """
-    Удаляет записи в базе данных о канале, который создаёт комнаты
-
-    :param server: Сервер, для которого нужно удалить записи
-    :type server: discord.Guild
-    """
-
-    session = Session()
-
-    channel_from_db = session.query(ServerSettingsOfRooms).filter_by(server_id=str(server.id)).first()
-
-    if channel_from_db is not None:
-        session.delete(channel_from_db)
-
-    session.commit()
-    session.close()
-
-
-def check_room_settings(server, owner, channel, settings):
-    """
-    Проверяет настройки войса и настроек из settings. Если есть различия, то в базе данных обновляются данные
-
-    :param server: сервер, на котором находится комната
-    :type server: discord.Guild
-    :param owner: пользователь владеющей комнатой
-    :type owner: discord.Member or discord.User
-    :param channel: войс, из которого берутся настройки
-    :type channel: discord.VoiceChannel
-    :param settings: настройки, с которыми сравниваются настройки войса
-    :type settings: dict
-    """
-
-    everyone = server.default_role
-
-    settings_from_voice = {
-        "name": channel.name if channel.name != owner.display_name else None,
-        "user_limit": channel.user_limit,
-        "bitrate": channel.bitrate // 1000,
-        "is_locked": channel.overwrites_for(everyone) == Permissions(connect=False)
-    }
-
-    # Если настройки из базы данных несостыкуются с настройками текущего войса или же настройки не
-    # зафиксированны в базе данных, то записать изменения в базу данных
-    if settings != settings_from_voice:
-        update_user_settings(server, owner, **settings_from_voice)
-
-    def check(p):
-        return type(p[0]) is discord.Member and p[0].id != owner.id
-
-    # Пользователи, у который есть доступ к каналу, из текущего войса и из базы данных
-    users_from_voice = dict(
-        filter(check, map(lambda m: (m[0], PermissionsForRoom(m[1].connect)), channel.overwrites.items()))
-    )
-
-    # Если список пользователей из войса и из базы данных не сходятся, то обновить список в базе данных
-    update_permissions_for_all_users(server, owner, users_from_voice)
-
-
-def check_rooms_system(ctx):
-    """
-    Проверка на использование сервером приватных комнат и использования пользователем приватных комнат на данном сервере
-
-    :param ctx: информация о сообщении
-    :type ctx: commands.Context
-    :return: результат проверки
-    :rtype: bool
-    """
-    author = ctx.author
-    server = ctx.guild
-
-    creator = get_room_creator(server)
-
-    # Если на сервере нет системы комнат, то проигнорировать вызов команды
-    if creator is None:
-        return False
-
-    settings = get_user_settings(server, author)
-
-    # Если участник, на данный момент, в своей комнате
-    if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
-        # Проверяет настройки войса с настройками из базы данных
-        check_room_settings(server, author, author.voice.channel, settings)
-
-    return True
+    return commands.check(predicate)
 
 
 class Rooms(Cog, name="Приватные комнаты"):
     @commands.Cog.listener("on_voice_state_update")
-    async def voice_master(self, user, before, after):
-        """
-        Создание и удаление комнаты, когда пользователей заходит, выходит или перемещается по голосовым каналам
-        """
-
+    async def room_master(self, user, before, after):
+        """Creating rooms and deleting rooms without users"""
         server = after.channel.guild if before.channel is None else before.channel.guild
-        creator = get_room_creator(server)
 
-        # если канал не найден, то завершить процесс
-        if creator is None:
-            return
+        session = Session()
+        server_settings = get_server_settings(session, server)
 
-        # если канал не имеет категории, то удалить этот канал в базе данных и завершить процесс
-        if creator.category is None:
-            delete_room_creator(server)
-
+        if server_settings is None:
+            session.close()
             return
         else:
-            creator_category = creator.category
+            # a voice channel that creates rooms
+            creator_rooms = server.get_channel(server_settings.creator)
 
-        # Когда пользователь перемещается по войсам или только что присоеденился к войсу
+        # if the voice channel doesn't exist or it doesn't have category, delete server's settings from database
+        if creator_rooms is None or creator_rooms.category is None:
+            session.delete(server_settings)
+            session.commit()
+            session.close()
+            return
+        else:
+            rooms_category = creator_rooms.category  # a category that will contain rooms
+
+        if before.channel is not None and get_owner(before.channel) == user and after.channel == creator_rooms:
+            await user.move_to(before.channel)
+            return
+
+        # when the user have leaved the voice channel
+        if before.channel:
+            channel = before.channel
+
+            if channel in rooms_category.voice_channels and channel != creator_rooms and len(channel.members) == 0:
+                await channel.delete()
+
+        # when the user have joined the voice channel
         if after.channel:
             channel = after.channel
 
-            # Если канал, в котом сейчас находится пользователь является тем каналом, который создаёт комнаты, то
-            # начинается конфигурация комнаты
-            if creator == channel:
-                settings = get_user_settings(server, user)
+            # if the voice channel that the user joined, create a room
+            if creator_rooms == channel:
+                # user's settings from database
+                user_settings = get_user_settings(session, server, user)
                 everyone = server.default_role
 
-                if settings is None:
-                    update_user_settings(server, user)
-                    settings = get_user_settings(server, user)
+                # if user's settings dont't exist, create default settings and write them in database
+                if user_settings is None:
+                    user_settings = add_user_settings(session, server, user)
+                    session.commit()
 
+                # voice channel's permissions
                 permissions_for_room = {
                     user: OWNER_PERMISSIONS,
-                    everyone: Permissions(connect=not settings["is_locked"])
+                    everyone: Permissions(connect=not user_settings.is_locked)
                 }
-                permissions_for_room.update(get_permissions_for_all_users(server, user))
+
+                # voice channel's permissions from database
+                users_with_permissions = get_all_permissions(session, server, user)
+
+                for perms in users_with_permissions:
+                    user_with_perms = server.get_member(perms.user)
+
+                    # if user doesn't exist in the server, delete a permission from database
+                    if user_with_perms is None:
+                        session.delete(perms)
+                        session.commit()
+                    else:
+                        permissions_for_room[user_with_perms] = Permissions(connect=perms.permissions.value)
 
                 room = await server.create_voice_channel(
-                    name=settings["name"],
-                    category=creator_category,
+                    name=user_settings.name if user_settings.name is not None else user.display_name,
+                    category=rooms_category,
                     overwrites=permissions_for_room,
-                    user_limit=settings["user_limit"],
-                    bitrate=settings["bitrate"] * 1000
+                    user_limit=user_settings.user_limit,
+                    bitrate=user_settings.bitrate * 1000
                 )
 
                 await user.move_to(room)
 
-        if before.channel:
-            # когда пользователь выходит из голосового канала
-            channel = before.channel
-
-            if channel in creator_category.voice_channels and channel != creator and len(channel.members) == 0:
-                # удалить голосовой канал, если он является комнатой и в ней нет пользователей
-                await channel.delete()
+        session.close()
 
     @commands.Cog.listener("on_guild_channel_delete")
-    async def voice_master_checker_deleted_channels(self, channel):
-        """
-        Проверка удалённого канала на канал, который создаёт приватные комнаты
-        """
+    async def rooms_master_check_deleted_channels(self, channel):
+        """Checking if a deleted channel is a voice channel that creates rooms or it's a category that contains rooms"""
+        session = Session()
+        settings = get_server_settings(session, channel.guild)
 
-        creator = get_room_creator(channel.guild)
+        if settings is not None and (settings.creator == channel.id or
+                                     channel.guild.get_channel(settings.creator).category is None):
+            session.delete(settings)
+            session.commit()
 
-        # Если удалённый был каналом, который создаёт комнаты, то удалить его в базе данных
-        if channel == creator:
-            delete_room_creator(channel.guild)
+        session.close()
 
     @commands.Cog.listener("on_guild_channel_update")
     async def voice_master_checker_updated_channels(self, before, after):
-        """
-        Проверка изменённого канала на канал, который создаёт приватные комнаты
-        """
+        """Checking if a edited channel is a voice channel that creates rooms"""
+        server = before.guild
 
-        creator = get_room_creator(before.guild)
+        session = Session()
+        server_settings = get_server_settings(session, server)
 
-        # Если у канала удалили категорию или его переместили в другую, то удалить канал в базе данных и на сервере
-        if before == creator and before.category != after.category:
-            delete_room_creator(after.guild)
-            await after.delete()
+        # if the channel is a voice channel that creates room and this channel moved to another category, delete
+        # settings from database
+        if before.id == server_settings.creator and before.category != after.category:
+            session.delete(server_settings)
+            session.commit()
+        else:
+            # if the channel is a room, we will find special permissions for owner of this room
+            owner = get_owner(before)
 
-            return
+            # if the channel has special permissions, start check all changes
+            if owner:
+                user_settings = get_user_settings(session, server, owner)
 
-        server = after.guild
-        # Владелец комнаты
-        author = [m for m, p in before.overwrites.items() if p == OWNER_PERMISSIONS]
-        if len(author) != 0:
-            author = author[0]
-            settings = get_user_settings(server, author)
+                room = after
+                everyone = server.default_role
 
-            # Проверяет настройки войса с настройками из базы данных
-            check_room_settings(after.guild, author, after, settings)
+                # set room's settings to database
+                user_settings.name = room.name if room.name != owner.display_name else None
+                user_settings.user_limit = room.user_limit
+                user_settings.bitrate = room.bitrate // 1000
+                user_settings.is_locked = room.overwrites_for(everyone) == Permissions(connect=False)
+                session.commit()
 
-    @commands.group(name="room")
-    @commands.check(check_rooms_system)
+                # permissions from the room
+                def check(p):
+                    return type(p[0]) is discord.Member and p[0].id != owner.id and \
+                           p[1] is not PermissionsForRoom.default
+
+                permissions_from_voice = dict(filter(
+                    check,
+                    map(lambda m: (m[0], PermissionsForRoom(m[1].connect)), room.overwrites.items())
+                ))
+
+                # room's permissions from database
+                data_from_db = get_all_permissions(session, server, owner)
+
+                # reformat view of permissions from database for comparing
+                permissions_from_db = {}
+
+                for user in data_from_db:
+                    member = server.get_member(int(user.user_id))
+
+                    if member is not None:
+                        permissions_from_db[member] = user.permissions
+
+                # identify which users is added, deleted, modified
+                added = [(m, p) for m, p in permissions_from_voice.items() if m not in permissions_from_db]
+                deleted = [(m, p) for m, p in permissions_from_db.items() if m not in permissions_from_voice]
+                modified = [(m, p) for m, p in permissions_from_voice.items()
+                            if m in permissions_from_db and permissions_from_db[m] != permissions_from_voice[m]]
+
+                db_kwargs = {
+                    "server_id": str(server.id),
+                    "owner_id": str(owner.id)
+                }
+
+                # make changes in database
+                for member, perms in added:
+                    session.add(UserPermissionsOfRoom(**db_kwargs, user_id=str(member.id), permissions=perms))
+                for member, _ in deleted:
+                    session.query(UserPermissionsOfRoom).filter_by(**db_kwargs, user_id=str(member.id)).delete()
+                for member, perms in modified:
+                    session.query(UserPermissionsOfRoom).filter_by(**db_kwargs,
+                                                                   user_id=str(member.id)).first().permissions = perms
+                session.commit()
+
+        session.close()
+
+    @commands.group(name="room", aliases=["r"])
     async def room_settings(self, ctx):
-        """
-        Настройка вашей приватной комнаты
-        """
-
-        author = ctx.author
+        """Настройка вашей приватной комнаты"""
+        user = ctx.author
         server = ctx.guild
 
-        settings = get_user_settings(server, author)
-        creator = get_room_creator(server)
+        session = Session()
+        server_settings = get_server_settings(session, server)
+        creator = server.get_channel(server_settings.creator)
+        # if a channel from database doesn't exist, ignore
+        if creator is None:
+            session.close()
+            return
 
-        if settings is None:
-            raise CommandError(f"Вы не ещё не использовали приватные комнаты на этом сервере. Зайдите в голосовой "
-                               f"канал `{creator}`, чтобы создать комнату")
+        user_settings = get_user_settings(session, server, user)
+        # if the user haven't created a room in this server, notify that he must create room to make changes in database
+        # before he can use this command
+        if not user_settings:
+            session.close()
+            raise CommandError(f"Вы не использовали до этого приватные комнаты на этом сервере. Чтобы пользоваться "
+                               f"командой `{ctx.prefix}{ctx.command}`, создайте свою комнату, зайдя в голосовой канал "
+                               f"`{creator}`")
 
-        # Если команда была использована без сабкоманды, то отправить информацию о комнате
+        # if command is raised without any subcommands, just send info about user's room
         if ctx.invoked_subcommand is None:
-            name = settings["name"]
-            user_limit = settings["user_limit"]
-            bitrate = settings["bitrate"]
-            is_locked = settings["is_locked"]
+            message = Embed(title=f"Комната пользователя \"{user.display_name}\"")
+            message.set_footer(text=f"Посмотреть все доступные команды для управления комнатой можно с помощью команды "
+                                    f"{ctx.prefix}help {ctx.command}")
 
-            message = Embed(title=f"Информация о комнате пользователя \"{author.display_name}\"")
-            message.set_footer(text=f"Посмотреть все доступные команды для управления комнатой можно "
-                                    f"через {ctx.prefix}help room")
+            # get settings from database
+            user_settings = get_user_settings(session, server, user)
+            name = user_settings.name if user_settings.name is not None else user.display_name
+            is_locked = user_settings.is_locked
+            user_limit = user_settings.user_limit
+            bitrate = user_settings.bitrate
 
-            users_with_permissions = get_permissions_for_all_users(server, author)
+            # room's permissions from database
+            data_from_db = get_all_permissions(session, server, user)
 
-            # Информация о комнате
+            # room's permissions as dict
+            permissions = {}
+
+            for perm in data_from_db:
+                member = server.get_member(int(perm.user_id))
+
+                if member is not None:
+                    permissions[member] = perm.permissions.value
+
+            # generate info about general settings of room
             message.description = f"**Название: ** {name}\n" \
                                   f"**Доступ:** {'закрытый' if is_locked else 'открытый'}\n" \
                                   f"**Лимит пользователей:** {user_limit if user_limit != 0 else 'нет'}\n" \
                                   f"**Битрейт:** {bitrate} кбит/с"
 
-            # Перечесление пользователей с правами доступа
-            if users_with_permissions is not None:
-                allowed = list(filter(lambda p: p[1].connect is True, users_with_permissions.items()))
-                banned = list(filter(lambda p: p[1].connect is False, users_with_permissions.items()))
+            # generate info about access to room for certain users
+            if permissions is not None:
+                allowed = list(filter(lambda p: p[1], permissions.items()))
+                banned = list(filter(lambda p: not p[1], permissions.items()))
 
                 if len(allowed) != 0:
                     message.add_field(
@@ -504,47 +291,43 @@ class Rooms(Cog, name="Приватные комнаты"):
 
             await ctx.send(embed=message)
 
+        session.close()
+
     @room_settings.command(cls=Command, name="lock")
+    @room_is_not_locked()
     async def lock_room(self, ctx):
-        """
-        Закрыть комнату от посторонних участников
-        """
-
-        author = ctx.author
+        """Закрыть комнату от посторонних участников"""
+        user = ctx.author
         server = ctx.guild
-        everyone = server.default_role
-        is_locked = get_user_settings(server, author)["is_locked"]
 
-        if is_locked:
-            raise CommandError("Комната уже закрыта")
-        else:
-            update_user_settings(server, author, is_locked=True)
+        session = Session()
+        settings = get_user_settings(session, server, user)
+        settings.is_locked = True
+        session.commit()
+        session.close()
 
-            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
-                await author.voice.channel.set_permissions(everyone, overwrite=Permissions(connect=False))
+        if user.voice is not None and user.voice.channel.overwrites_for(user) == OWNER_PERMISSIONS:
+            await user.voice.channel.set_permissions(server.default_role, overwrite=Permissions(connect=False))
 
-            await ctx.send(embed=SuccessfulMessage("Я закрыл вашу комнату"))
+        await ctx.send(embed=SuccessfulMessage("Я закрыл вашу комнату"))
 
     @room_settings.command(cls=Command, name="unlock")
+    @room_is_locked()
     async def unlock_room(self, ctx):
-        """
-        Открыть комнату для посторонних участников
-        """
-
-        author = ctx.author
+        """Открыть комнату для посторонних участников"""
+        user = ctx.author
         server = ctx.guild
-        everyone = server.default_role
-        is_locked = get_user_settings(server, author)["is_locked"]
 
-        if not is_locked:
-            raise CommandError("Комната уже открыта")
-        else:
-            update_user_settings(server, author, is_locked=False)
+        session = Session()
+        settings = get_user_settings(session, server, user)
+        settings.is_locked = False
+        session.commit()
+        session.close()
 
-            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
-                await author.voice.channel.set_permissions(everyone, overwrite=Permissions(connect=True))
+        if user.voice is not None and user.voice.channel.overwrites_for(user) == OWNER_PERMISSIONS:
+            await user.voice.channel.set_permissions(server.default_role, overwrite=Permissions(connect=True))
 
-            await ctx.send(embed=SuccessfulMessage("Я открыл вашу комнату"))
+        await ctx.send(embed=SuccessfulMessage("Я открыл вашу комнату"))
 
     @room_settings.command(
         cls=Command, name="limit",
@@ -552,33 +335,38 @@ class Rooms(Cog, name="Приватные комнаты"):
                          "пустым, лимит сбросится)", True)}
     )
     async def room_users_limit(self, ctx, limit: int = 0):
-        """
-        Поставить лимит пользователей в вашей комнате
-        """
-
-        author = ctx.author
+        """Поставить лимит пользователей для комнаты"""
+        user = ctx.author
         server = ctx.guild
-        current_limit = get_user_settings(server, author)["user_limit"]
+
+        session = Session()
+        settings = get_user_settings(session, server, user)
 
         if 0 > limit:
+            session.close()
             raise CommandError("Лимит не должен быть меньше 0")
         elif limit > 99:
+            session.close()
             raise CommandError("Лимит не должен быть больше 99")
 
-        if current_limit == limit == 0:
+        if settings.user_limit == limit == 0:
+            session.close()
             raise CommandError("Вы ещё не поставили лимит пользователей для комнаты, чтобы сбрасывать его")
-        elif current_limit == limit:
+        elif settings.user_limit == limit:
+            session.close()
             raise CommandError("Комната уже имеет такой лимит")
         else:
             if limit == 0:
                 message = SuccessfulMessage("Я сбросил лимит пользователей в вашей комнате")
-                update_user_settings(server, author, user_limit=limit)
             else:
                 message = SuccessfulMessage("Я изменил лимит пользователей для вашей комнаты")
-                update_user_settings(server, author, user_limit=limit)
 
-            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
-                await author.voice.channel.edit(user_limit=limit)
+            settings.user_limit = limit
+            session.commit()
+            session.close()
+
+            if user.voice is not None and user.voice.channel.overwrites_for(user) == OWNER_PERMISSIONS:
+                await user.voice.channel.edit(user_limit=limit)
 
             await ctx.send(embed=message)
 
@@ -588,32 +376,36 @@ class Rooms(Cog, name="Приватные комнаты"):
                             True)}
     )
     async def rename_room(self, ctx, *, name=None):
-        """
-        Измененить название команты
-        """
-
-        author = ctx.author
+        """Измененить название команты"""
+        user = ctx.author
         server = ctx.guild
-        current_name = get_user_settings(server, author)["name"]
 
         if name is not None and len(name) > 32:
             raise CommandError("Название канала не должно быть больше 32-ух символов")
 
-        if current_name == author.display_name and name is None:
+        session = Session()
+        settings = get_user_settings(session, server, user)
+
+        if settings.name is None and name is None:
+            session.close()
             raise CommandError("Вы ещё не поставили название для комнаты, чтобы сбрасывать его")
-        elif name == current_name:
+        elif name == settings.name:
+            session.close()
             raise CommandError("Комната уже имеет такое название")
         else:
             if name is None:
                 message = SuccessfulMessage("Я сбросил название вашего канала")
-                name = author.display_name
-                update_user_settings(server, author, name=None)
+                name = user.display_name
+                settings.name = None
             else:
                 message = SuccessfulMessage("Я изменил название вашей комнаты")
-                update_user_settings(server, author, name=name)
+                settings.name = name
 
-            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
-                await author.voice.channel.edit(name=name)
+            session.commit()
+            session.close()
+
+            if user.voice is not None and user.voice.channel.overwrites_for(user) == OWNER_PERMISSIONS:
+                await user.voice.channel.edit(name=name)
 
             await ctx.send(embed=message)
 
@@ -623,13 +415,9 @@ class Rooms(Cog, name="Приватные комнаты"):
                            True)}
     )
     async def change_room_bitrate(self, ctx, bitrate: int = 64):
-        """
-        Изменить битрейт (качество звука) комнаты
-        """
-
-        author = ctx.author
+        """Изменить битрейт (качество звука) комнаты"""
+        user = ctx.author
         server = ctx.guild
-        current_bitrate = get_user_settings(server, author)["bitrate"]
         max_bitrate = int(server.bitrate_limit // 1000)
 
         if 8 > bitrate:
@@ -637,20 +425,27 @@ class Rooms(Cog, name="Приватные комнаты"):
         elif bitrate > max_bitrate:
             raise CommandError(f"Битрейт не должен быть больше {max_bitrate}")
 
-        if current_bitrate == bitrate == 64:
+        session = Session()
+        settings = get_user_settings(session, server, user)
+
+        if settings.bitrate == bitrate == 64:
+            session.close()
             raise CommandError("Вы ещё не изменяли битрейт, чтобы сбрасывать его по умолчанию")
-        elif current_bitrate == bitrate:
+        elif settings.bitrate == bitrate:
+            session.close()
             raise CommandError("Комната уже имеет такой битрейт")
         else:
             if bitrate == 0:
                 message = SuccessfulMessage("Я сбросил битрейт в вашей комнате")
-                update_user_settings(server, author, bitrate=bitrate)
             else:
                 message = SuccessfulMessage("Я изменил битрейт в вашей комнате")
-                update_user_settings(server, author, bitrate=bitrate)
 
-            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
-                await author.voice.channel.edit(bitrate=bitrate * 1000)
+            settings.bitrate = bitrate
+            session.commit()
+            session.close()
+
+            if user.voice is not None and user.voice.channel.overwrites_for(user) == OWNER_PERMISSIONS:
+                await user.voice.channel.edit(bitrate=bitrate * 1000)
 
             await ctx.send(embed=message)
 
@@ -659,10 +454,7 @@ class Rooms(Cog, name="Приватные комнаты"):
         usage={"пользователь": ("упоминание или ID участника сервера", True)}
     )
     async def kick_member_from_room(self, ctx, user: commands.MemberConverter = None):
-        """
-        Кикнуть пользователя из вашей комнаты
-        """
-
+        """Кикнуть пользователя из вашей комнаты"""
         author = ctx.author
 
         if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
@@ -684,22 +476,27 @@ class Rooms(Cog, name="Приватные комнаты"):
         usage={"пользователь": ("упоминание или ID участника сервера", True)}
     )
     async def allow_member_to_join_room(self, ctx, user: commands.MemberConverter):
-        """
-        Дать доступ пользователю заходить в комнату
-        """
-
-        author = ctx.author
+        """Дать доступ пользователю заходить в комнату"""
+        owner = ctx.author
         server = ctx.guild
-        users_with_permissions = get_permissions_for_all_users(server, author)
-        permissions = PermissionsForRoom.allowed
 
-        if user in users_with_permissions and users_with_permissions[user].connect == permissions.value:
+        session = Session()
+        permissions_from_db = get_permissions(session, server, owner, user)
+        perms = PermissionsForRoom.allowed
+
+        if permissions_from_db is not None and permissions_from_db.permissions == perms:
+            session.close()
             raise CommandError("Этот участник уже имеет доступ к вашей комнате")
         else:
-            update_permissions_for_user(server, author, user, permissions)
+            if permissions_from_db is None:
+                add_permissions(session, server, owner, user, perms)
+            else:
+                permissions_from_db.permissions = perms
+            session.commit()
+            session.close()
 
-            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
-                await author.voice.channel.set_permissions(user, overwrite=Permissions(connect=permissions.value))
+            if owner.voice is not None and owner.voice.channel.overwrites_for(owner) == OWNER_PERMISSIONS:
+                await owner.voice.channel.set_permissions(user, overwrite=Permissions(connect=perms.value))
 
             await ctx.send(embed=SuccessfulMessage(f"Я дал доступ `{user.display_name}` к вашей комнате"))
 
@@ -708,22 +505,27 @@ class Rooms(Cog, name="Приватные комнаты"):
         usage={"пользователь": ("упоминание или ID участника сервера", True)}
     )
     async def ban_member_from_room(self, ctx, user: commands.MemberConverter):
-        """
-        Заблокировать доступ пользователю заходить в комнату
-        """
-
-        author = ctx.author
+        """Заблокировать доступ пользователю заходить в комнату"""
+        owner = ctx.author
         server = ctx.guild
-        users_with_permissions = get_permissions_for_all_users(server, author)
-        permissions = PermissionsForRoom.banned
 
-        if user in users_with_permissions and users_with_permissions[user].connect == permissions.value:
+        session = Session()
+        permissions_from_db = get_permissions(session, server, owner, user)
+        perms = PermissionsForRoom.banned
+
+        if permissions_from_db is not None and permissions_from_db.permissions == perms:
+            session.close()
             raise CommandError("У этого участника уже заблокирован доступ к вашей комнате")
         else:
-            update_permissions_for_user(server, author, user, permissions)
+            if permissions_from_db is None:
+                add_permissions(session, server, owner, user, perms)
+            else:
+                permissions_from_db.permissions = perms
+            session.commit()
+            session.close()
 
-            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
-                await author.voice.channel.set_permissions(user, overwrite=Permissions(connect=permissions.value))
+            if owner.voice is not None and owner.voice.channel.overwrites_for(owner) == OWNER_PERMISSIONS:
+                await owner.voice.channel.set_permissions(user, overwrite=Permissions(connect=perms.value))
 
             await ctx.send(embed=SuccessfulMessage(f"Я заброкировал доступ у `{user.display_name}` к вашей комнате"))
 
@@ -732,51 +534,75 @@ class Rooms(Cog, name="Приватные комнаты"):
         usage={"пользователь": ("упоминание или ID участника сервера", True)}
     )
     async def set_default_permissions_for_member(self, ctx, user: commands.MemberConverter):
-        """
-        Поставить доступ к каналу у пользователя по умолчанию
-        """
-
-        author = ctx.author
+        """Поставить доступ к каналу у пользователя по умолчанию"""
+        owner = ctx.author
         server = ctx.guild
-        users_with_permissions = get_permissions_for_all_users(server, author)
 
-        if user not in users_with_permissions:
+        session = Session()
+        permissions_from_db = get_permissions(session, server, owner, user)
+
+        if permissions_from_db is None:
+            session.close()
             raise CommandError("Этот участник не имеет особых прав, чтобы сбрасывать их")
         else:
-            remove_permissions_for_user(server, author, user)
+            session.delete(permissions_from_db)
+            session.commit()
+            session.close()
 
-            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
-                await author.voice.channel.set_permissions(user, overwrite=Permissions(connect=None))
+            if owner.voice is not None and owner.voice.channel.overwrites_for(owner) == OWNER_PERMISSIONS:
+                await owner.voice.channel.set_permissions(user, overwrite=Permissions(connect=None))
 
             await ctx.send(embed=SuccessfulMessage(f"Я сбросил права доступа у `{user.display_name}` к вашей комнате"))
 
     @room_settings.command(name="reset")
     async def reset_room_settings(self, ctx):
-        """
-        Сбросить все настройки комнаты
-        """
-
-        author = ctx.author
+        """Сбросить все настройки комнаты"""
+        owner = ctx.author
         server = ctx.guild
         everyone = server.default_role
-        settings = get_user_settings(server, author)
-        default_settings = {
-            "name": author.display_name,
-            "user_limit": 0,
-            "bitrate": 64,
-            "is_locked": False
-        }
 
-        if settings == default_settings:
+        session = Session()
+
+        settings = get_user_settings(session, server, owner)
+        permissions_from_db = get_all_permissions(session, server, owner)
+
+        voice_channel = owner.voice.channel if owner.voice is not None and \
+                                               owner.voice.channel.overwrites_for(owner) == OWNER_PERMISSIONS else None
+
+        if voice_channel:
+            permissions_from_voice = list(filter(
+                lambda p: type(p[0]) is discord.Member and p[0].id != owner.id and p[1].connect is not None,
+                voice_channel.overwrites.items()
+            ))
+        else:
+            permissions_from_voice = []
+
+        if settings.name is None and settings.user_limit == 0 and settings.bitrate == 64 and not settings.is_locked \
+                and (not len(permissions_from_db) and voice_channel is None or not len(permissions_from_voice) and
+                     voice_channel is not None):
+            for i in permissions_from_db:
+                session.delete(i)
+            session.commit()
+            session.close()
             raise CommandError("Вы ещё не сделали каких-либо изменений для комнаты, чтобы сбрасывать его настройки")
         else:
-            update_user_settings(server, author, **default_settings)
+            settings.name = None
+            settings.user_limit = 0
+            settings.bitrate = 64
+            settings.is_locked = False
+            session.commit()
+            session.close()
 
-            if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
-                channel = author.voice.channel
+            for i in permissions_from_db:
+                session.delete(i)
+            session.commit()
+            session.close()
 
-                await channel.edit(name=default_settings["name"], user_limit=default_settings["user_limit"],
-                                   bitrate=default_settings["bitrate"] * 1000)
-                await channel.set_permissions(everyone, overwrite=Permissions(connect=True))
+            if voice_channel:
+                await voice_channel.edit(name=owner.display_name, user_limit=0, bitrate=64000)
+                await voice_channel.set_permissions(everyone, overwrite=Permissions(connect=True))
+
+                for user, _ in permissions_from_voice:
+                    await voice_channel.set_permissions(user, overwrite=None)
 
             await ctx.send(embed=SuccessfulMessage("Я сбросил настройки вашей комнаты"))
