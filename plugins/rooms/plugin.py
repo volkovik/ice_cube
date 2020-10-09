@@ -8,8 +8,8 @@ from core.database import UserPermissionsOfRoom
 from core.templates import PermissionsForRoom, DefaultEmbed as Embed, SuccessfulMessage
 from main import Session
 
-from plugins.rooms.utils import get_server_settings, get_user_settings, add_user_settings, get_all_permissions
-
+from plugins.rooms.utils import get_server_settings, get_user_settings, add_user_settings, get_all_permissions, \
+    get_permissions, add_permissions
 
 # user's permissions for his room
 OWNER_PERMISSIONS = Permissions(manage_channels=True, connect=True, speak=True)
@@ -313,3 +313,281 @@ class Rooms(Cog, name="Приватные комнаты"):
             await user.voice.channel.set_permissions(server.default_role, overwrite=Permissions(connect=True))
 
         await ctx.send(embed=SuccessfulMessage("Я открыл вашу комнату"))
+
+    @room_settings.command(
+        cls=Command, name="limit",
+        usage={"лимит": ("максимальное количество участников, которое может подключиться к комнате (если оставить "
+                         "пустым, лимит сбросится)", True)}
+    )
+    async def room_users_limit(self, ctx, limit: int = 0):
+        """Поставить лимит пользователей для комнаты"""
+        user = ctx.author
+        server = ctx.guild
+
+        session = Session()
+        settings = get_user_settings(session, server, user)
+
+        if 0 > limit:
+            session.close()
+            raise CommandError("Лимит не должен быть меньше 0")
+        elif limit > 99:
+            session.close()
+            raise CommandError("Лимит не должен быть больше 99")
+
+        if settings.user_limit == limit == 0:
+            session.close()
+            raise CommandError("Вы ещё не поставили лимит пользователей для комнаты, чтобы сбрасывать его")
+        elif settings.user_limit == limit:
+            session.close()
+            raise CommandError("Комната уже имеет такой лимит")
+        else:
+            if limit == 0:
+                message = SuccessfulMessage("Я сбросил лимит пользователей в вашей комнате")
+            else:
+                message = SuccessfulMessage("Я изменил лимит пользователей для вашей комнаты")
+
+            settings.user_limit = limit
+            session.commit()
+            session.close()
+
+            if user.voice is not None and user.voice.channel.overwrites_for(user) == OWNER_PERMISSIONS:
+                await user.voice.channel.edit(user_limit=limit)
+
+            await ctx.send(embed=message)
+
+    @room_settings.command(
+        cls=Command, name="name",
+        usage={"название": ("новое название комнаты (если оставить пустым, то название комнаты изменится на ваш ник)",
+                            True)}
+    )
+    async def rename_room(self, ctx, *, name=None):
+        """Измененить название команты"""
+        user = ctx.author
+        server = ctx.guild
+
+        if name is not None and len(name) > 32:
+            raise CommandError("Название канала не должно быть больше 32-ух символов")
+
+        session = Session()
+        settings = get_user_settings(session, server, user)
+
+        if settings.name is None and name is None:
+            session.close()
+            raise CommandError("Вы ещё не поставили название для комнаты, чтобы сбрасывать его")
+        elif name == settings.name:
+            session.close()
+            raise CommandError("Комната уже имеет такое название")
+        else:
+            if name is None:
+                message = SuccessfulMessage("Я сбросил название вашего канала")
+                name = user.display_name
+                settings.name = None
+            else:
+                message = SuccessfulMessage("Я изменил название вашей комнаты")
+                settings.name = name
+
+            session.commit()
+            session.close()
+
+            if user.voice is not None and user.voice.channel.overwrites_for(user) == OWNER_PERMISSIONS:
+                await user.voice.channel.edit(name=name)
+
+            await ctx.send(embed=message)
+
+    @room_settings.command(
+        cls=Command, name="bitrate",
+        usage={"битрейт": ("кбит/с, чем больше, тем лучше качество звука (если оставить пустым, битрейт будет 64)",
+                           True)}
+    )
+    async def change_room_bitrate(self, ctx, bitrate: int = 64):
+        """Изменить битрейт (качество звука) комнаты"""
+        user = ctx.author
+        server = ctx.guild
+        max_bitrate = int(server.bitrate_limit // 1000)
+
+        if 8 > bitrate:
+            raise CommandError("Битрейт не должен быть меньше 8")
+        elif bitrate > max_bitrate:
+            raise CommandError(f"Битрейт не должен быть больше {max_bitrate}")
+
+        session = Session()
+        settings = get_user_settings(session, server, user)
+
+        if settings.bitrate == bitrate == 64:
+            session.close()
+            raise CommandError("Вы ещё не изменяли битрейт, чтобы сбрасывать его по умолчанию")
+        elif settings.bitrate == bitrate:
+            session.close()
+            raise CommandError("Комната уже имеет такой битрейт")
+        else:
+            if bitrate == 0:
+                message = SuccessfulMessage("Я сбросил битрейт в вашей комнате")
+            else:
+                message = SuccessfulMessage("Я изменил битрейт в вашей комнате")
+
+            settings.bitrate = bitrate
+            session.commit()
+            session.close()
+
+            if user.voice is not None and user.voice.channel.overwrites_for(user) == OWNER_PERMISSIONS:
+                await user.voice.channel.edit(bitrate=bitrate * 1000)
+
+            await ctx.send(embed=message)
+
+    @room_settings.command(
+        cls=Command, name="kick",
+        usage={"пользователь": ("упоминание или ID участника сервера", True)}
+    )
+    async def kick_member_from_room(self, ctx, user: commands.MemberConverter = None):
+        """Кикнуть пользователя из вашей комнаты"""
+        author = ctx.author
+
+        if author.voice is not None and author.voice.channel.overwrites_for(author) == OWNER_PERMISSIONS:
+            if user is None:
+                raise CommandError("Вы не ввели пользователя")
+
+            members = author.voice.channel.members
+
+            if user not in members:
+                raise CommandError("В вашей комнате нет такого пользователя")
+            else:
+                await user.move_to(None)
+                await ctx.send(embed=SuccessfulMessage(f"Я кикнул `{user.display_name}` из вашей комнаты"))
+        else:
+            raise CommandError("Вы не находитесь в своей комнате")
+
+    @room_settings.command(
+        cls=Command, name="allow",
+        usage={"пользователь": ("упоминание или ID участника сервера", True)}
+    )
+    async def allow_member_to_join_room(self, ctx, user: commands.MemberConverter):
+        """Дать доступ пользователю заходить в комнату"""
+        owner = ctx.author
+        server = ctx.guild
+
+        session = Session()
+        permissions_from_db = get_permissions(session, server, owner, user)
+        perms = PermissionsForRoom.allowed
+
+        if permissions_from_db is not None and permissions_from_db.permissions == perms:
+            session.close()
+            raise CommandError("Этот участник уже имеет доступ к вашей комнате")
+        else:
+            if permissions_from_db is None:
+                add_permissions(session, server, owner, user, perms)
+            else:
+                permissions_from_db.permissions = perms
+            session.commit()
+            session.close()
+
+            if owner.voice is not None and owner.voice.channel.overwrites_for(owner) == OWNER_PERMISSIONS:
+                await owner.voice.channel.set_permissions(user, overwrite=Permissions(connect=perms.value))
+
+            await ctx.send(embed=SuccessfulMessage(f"Я дал доступ `{user.display_name}` к вашей комнате"))
+
+    @room_settings.command(
+        cls=Command, name="ban",
+        usage={"пользователь": ("упоминание или ID участника сервера", True)}
+    )
+    async def ban_member_from_room(self, ctx, user: commands.MemberConverter):
+        """Заблокировать доступ пользователю заходить в комнату"""
+        owner = ctx.author
+        server = ctx.guild
+
+        session = Session()
+        permissions_from_db = get_permissions(session, server, owner, user)
+        perms = PermissionsForRoom.banned
+
+        if permissions_from_db is not None and permissions_from_db.permissions == perms:
+            session.close()
+            raise CommandError("У этого участника уже заблокирован доступ к вашей комнате")
+        else:
+            if permissions_from_db is None:
+                add_permissions(session, server, owner, user, perms)
+            else:
+                permissions_from_db.permissions = perms
+            session.commit()
+            session.close()
+
+            if owner.voice is not None and owner.voice.channel.overwrites_for(owner) == OWNER_PERMISSIONS:
+                await owner.voice.channel.set_permissions(user, overwrite=Permissions(connect=perms.value))
+
+            await ctx.send(embed=SuccessfulMessage(f"Я заброкировал доступ у `{user.display_name}` к вашей комнате"))
+
+    @room_settings.command(
+        cls=Command, name="remove",
+        usage={"пользователь": ("упоминание или ID участника сервера", True)}
+    )
+    async def set_default_permissions_for_member(self, ctx, user: commands.MemberConverter):
+        """Поставить доступ к каналу у пользователя по умолчанию"""
+        owner = ctx.author
+        server = ctx.guild
+
+        session = Session()
+        permissions_from_db = get_permissions(session, server, owner, user)
+
+        if permissions_from_db is None:
+            session.close()
+            raise CommandError("Этот участник не имеет особых прав, чтобы сбрасывать их")
+        else:
+            session.delete(permissions_from_db)
+            session.commit()
+            session.close()
+
+            if owner.voice is not None and owner.voice.channel.overwrites_for(owner) == OWNER_PERMISSIONS:
+                await owner.voice.channel.set_permissions(user, overwrite=Permissions(connect=None))
+
+            await ctx.send(embed=SuccessfulMessage(f"Я сбросил права доступа у `{user.display_name}` к вашей комнате"))
+
+    @room_settings.command(name="reset")
+    async def reset_room_settings(self, ctx):
+        """Сбросить все настройки комнаты"""
+        owner = ctx.author
+        server = ctx.guild
+        everyone = server.default_role
+
+        session = Session()
+
+        settings = get_user_settings(session, server, owner)
+        permissions_from_db = get_all_permissions(session, server, owner)
+
+        voice_channel = owner.voice.channel if owner.voice is not None and \
+                                               owner.voice.channel.overwrites_for(owner) == OWNER_PERMISSIONS else None
+
+        if voice_channel:
+            permissions_from_voice = list(filter(
+                lambda p: type(p[0]) is discord.Member and p[0].id != owner.id and p[1].connect is not None,
+                voice_channel.overwrites.items()
+            ))
+        else:
+            permissions_from_voice = []
+
+        if settings.name is None and settings.user_limit == 0 and settings.bitrate == 64 and not settings.is_locked \
+                and (not len(permissions_from_db) and voice_channel is None or not len(permissions_from_voice) and
+                     voice_channel is not None):
+            for i in permissions_from_db:
+                session.delete(i)
+            session.commit()
+            session.close()
+            raise CommandError("Вы ещё не сделали каких-либо изменений для комнаты, чтобы сбрасывать его настройки")
+        else:
+            settings.name = None
+            settings.user_limit = 0
+            settings.bitrate = 64
+            settings.is_locked = False
+            session.commit()
+            session.close()
+
+            for i in permissions_from_db:
+                session.delete(i)
+            session.commit()
+            session.close()
+
+            if voice_channel:
+                await voice_channel.edit(name=owner.display_name, user_limit=0, bitrate=64000)
+                await voice_channel.set_permissions(everyone, overwrite=Permissions(connect=True))
+
+                for user, _ in permissions_from_voice:
+                    await voice_channel.set_permissions(user, overwrite=None)
+
+            await ctx.send(embed=SuccessfulMessage("Я сбросил настройки вашей комнаты"))
