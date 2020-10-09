@@ -3,9 +3,9 @@ from discord import PermissionOverwrite as Permissions
 from discord.ext import commands
 from discord.ext.commands import CommandError
 
-from core.commands import Cog
+from core.commands import Cog, Command
 from core.database import UserPermissionsOfRoom
-from core.templates import PermissionsForRoom, DefaultEmbed as Embed
+from core.templates import PermissionsForRoom, DefaultEmbed as Embed, SuccessfulMessage
 from main import Session
 
 from plugins.rooms.utils import get_server_settings, get_user_settings, add_user_settings, get_all_permissions
@@ -15,18 +15,23 @@ from plugins.rooms.utils import get_server_settings, get_user_settings, add_user
 OWNER_PERMISSIONS = Permissions(manage_channels=True, connect=True, speak=True)
 
 
-def rooms_system_is_enabled(ctx, session):
-    settings = get_server_settings(session, ctx.guild)
-    return settings is not None and ctx.guild.get_channel(settings.creator) is not None
+def room_is_locked_predicate(ctx: commands.Context):
+    """Returns user's room is locked"""
+    session = Session()
+    settings = get_user_settings(session, ctx.guild, ctx.author)
+    session.close()
+    return settings is not None and settings.is_locked
 
 
-def rooms_system_is_on():
+def room_is_locked():
+    """Checks user's room is locked"""
+    return commands.check(room_is_locked_predicate)
+
+
+def room_is_not_locked():
+    """Checks user's room isn't locked"""
     def predicate(ctx):
-        session = Session()
-        is_on = rooms_system_is_enabled(ctx, session)
-        session.close()
-
-        return is_on
+        return not room_is_locked_predicate(ctx)
 
     return commands.check(predicate)
 
@@ -199,25 +204,24 @@ class Rooms(Cog, name="Приватные комнаты"):
         session.close()
 
     @commands.group(name="room")
-    @rooms_system_is_on()
     async def room_settings(self, ctx):
-        """
-        Настройка вашей приватной комнаты
-        """
-
+        """Настройка вашей приватной комнаты"""
         user = ctx.author
         server = ctx.guild
 
         session = Session()
-        user_settings = get_user_settings(session, server, user)
+        server_settings = get_server_settings(session, server)
+        creator = server.get_channel(server_settings.creator)
+        # if a channel from database doesn't exist, ignore
+        if creator is None:
+            session.close()
+            return
 
+        user_settings = get_user_settings(session, server, user)
         # if the user haven't created a room in this server, notify that he must create room to make changes in database
         # before he can use this command
         if not user_settings:
-            server_settings = get_server_settings(session, server)
-            creator = server.get_channel(server_settings.creator)
             session.close()
-
             raise CommandError(f"Вы не использовали до этого приватные комнаты на этом сервере. Чтобы пользоваться "
                                f"командой `{ctx.prefix}{ctx.command}`, создайте свою комнату, зайдя в голосовой канал "
                                f"`{creator}`")
@@ -273,3 +277,39 @@ class Rooms(Cog, name="Приватные комнаты"):
             await ctx.send(embed=message)
 
         session.close()
+
+    @room_settings.command(cls=Command, name="lock")
+    @room_is_not_locked()
+    async def lock_room(self, ctx):
+        """Закрыть комнату от посторонних участников"""
+        user = ctx.author
+        server = ctx.guild
+
+        session = Session()
+        settings = get_user_settings(session, server, user)
+        settings.is_locked = True
+        session.commit()
+        session.close()
+
+        if user.voice is not None and user.voice.channel.overwrites_for(user) == OWNER_PERMISSIONS:
+            await user.voice.channel.set_permissions(server.default_role, overwrite=Permissions(connect=False))
+
+        await ctx.send(embed=SuccessfulMessage("Я закрыл вашу комнату"))
+
+    @room_settings.command(cls=Command, name="unlock")
+    @room_is_locked()
+    async def unlock_room(self, ctx):
+        """Открыть комнату для посторонних участников"""
+        user = ctx.author
+        server = ctx.guild
+
+        session = Session()
+        settings = get_user_settings(session, server, user)
+        settings.is_locked = False
+        session.commit()
+        session.close()
+
+        if user.voice is not None and user.voice.channel.overwrites_for(user) == OWNER_PERMISSIONS:
+            await user.voice.channel.set_permissions(server.default_role, overwrite=Permissions(connect=True))
+
+        await ctx.send(embed=SuccessfulMessage("Я открыл вашу комнату"))
