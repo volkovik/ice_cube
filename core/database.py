@@ -26,6 +26,11 @@ class ServerSettingsOfRooms(Base):
     server_id = Column(String(32), primary_key=True)
     channel_id_creates_rooms = Column(String(32), unique=True)
 
+    @property
+    def creator(self) -> int:
+        """ID of voice channel that creates rooms"""
+        return int(self.channel_id_creates_rooms)
+
 
 class UserSettingsOfRoom(Base):
     __tablename__ = "users_settings_of_room"
@@ -37,6 +42,16 @@ class UserSettingsOfRoom(Base):
     bitrate = Column(Integer, default=64, nullable=False)
     is_locked = Column(Boolean, default=False, nullable=False)
 
+    @property
+    def settings(self) -> dict:
+        """User's settings of room"""
+        return {
+            "name": self.name,
+            "user_limit": self.user_limit,
+            "bitrate": self.bitrate,
+            "is_locked": self.is_locked
+        }
+
 
 class UserPermissionsOfRoom(Base):
     __tablename__ = "users_permissions_of_room"
@@ -44,7 +59,11 @@ class UserPermissionsOfRoom(Base):
     server_id = Column(String(32), primary_key=True)
     owner_id = Column(String(32), primary_key=True)
     user_id = Column(String(32), primary_key=True)
-    permissions = Column(Enum(PermissionsForRoom), default=PermissionsForRoom.default, nullable=False)
+    permissions = Column(Enum(PermissionsForRoom), nullable=False)
+
+    @property
+    def user(self):
+        return int(self.user_id)
 
 
 class UserScoreToAnotherUser(Base):
