@@ -1,6 +1,9 @@
 import asyncio
 from enum import Enum
 from itertools import groupby
+from typing import Union
+
+import discord
 from discord import Embed
 from discord.ext import commands
 from discord.ext.commands import HelpCommand
@@ -88,51 +91,22 @@ class SuccessfulMessage(Embed):
 
 
 class Help(HelpCommand):
-    """
-    Производный класс, который формирует вид команды help
-    """
+    embed = DefaultEmbed()
 
-    def __init__(self, **options):
-        """
-        Настройка команды help
-
-        :param **options: некоторые настройки
-        """
-
-        self.width = options.pop('width', 80)  # максимальное количество символов для описания
-        self.sort_commands = options.pop('sort_commands', True)  # сортировка команд и категорий по алфавиту
-        self.commands_heading = options.pop('commands_heading', "Команды")  # название колонки для групп команд
-        self.embed = DefaultEmbed()  # Embed-шаблон
-
-        super().__init__(**options)
-
-        self.command_attrs["hidden"] = True  # не показывать команды, которые заведомо скрыты
-
-    def get_destination(self):
-        """
-        Получение канала для отправки сообщения
-
-        :return: текстовый канал сервера
-        """
-
-        ctx = self.context
-
-        return ctx.channel
+    def get_destination(self) -> discord.TextChannel:
+        """Returns channel for sending help"""
+        return self.context.channel
 
     async def prepare_help_command(self, ctx, command=None):
-        """
-        Очистка Embed-шаблона
-        """
-
+        """Create a new Embed"""
         self.embed = DefaultEmbed()
 
-    def get_command_signature(self, command, args=False):
+    def get_command_signature(self, command: commands.Command, args=False) -> str:
         """
-        Получение строки с командой, текущим префиксом и, если usage=True, ещё аргументы команды
+        Returns command signature
 
-        :param command: команда
-        :param args: возвращать ли команду с аргументами
-        :return: строка c информацией о команде
+        :param command: bot's command
+        :param args: include command's arguments in signature
         """
 
         string = f"{self.clean_prefix}{command}"
@@ -143,135 +117,93 @@ class Help(HelpCommand):
         return string
 
     async def send_bot_help(self, mapping):
-        """
-        Отправка списка команд бота в текстовый канал
-        """
-
+        """Sends list of bot's commands"""
         ctx = self.context
 
-        # Удаленяем все команды без категории и сортируем по категориям
-        get_category = lambda c: c.cog_name + ":"
-        filtered = await self.filter_commands(filter(lambda c: c.cog_name is not None, ctx.bot.commands), sort=True,
-                                              key=get_category)
-        commands = groupby(filtered, key=get_category)
+        # delete all commands without category and sort them
+        def get_category(command):
+            return command.cog_name
 
-        self.embed.title = self.commands_heading
+        filtered = await self.filter_commands(filter(
+            lambda c: c.cog_name is not None, ctx.bot.commands),
+            sort=True,
+            key=get_category
+        )
+        categories = groupby(filtered, key=get_category)
 
-        for category, cmds in commands:
-            commands_descriptions = []
+        # configure embed
+        self.embed.title = "Команды"
 
-            for cmd in cmds:
-                commands_descriptions.append(f"`{self.get_command_signature(cmd)}` - {cmd.short_doc}")
-
+        for category, cmds in categories:
             self.embed.add_field(
                 name=category,
-                value="\n".join(commands_descriptions),
+                value=" ".join([f"`{self.get_command_signature(i)}`" for i in cmds]),
                 inline=False
             )
 
         await self.get_destination().send(embed=self.embed)
 
-    async def send_command_help(self, command):
-        """
-        Отправка информации о команде в тектовый канал
-
-        :param command: команда бота
-        """
-
+    def make_help(self, command: Union[commands.Command, commands.Group]):
+        """Configure Embed for command or group of commands"""
         self.embed.title = f"Команда \"{command.name}\""
-
         self.embed.description = f"`{self.get_command_signature(command, args=True)}` - {command.short_doc}"
 
-        if command.usage:
-            self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
-            self.embed.add_field(
-                name="Аргументы",
-                value="\n".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
-                                 for key, params in command.usage.items()])
-            )
-
-        if command.usage:
-            self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
-            self.embed.add_field(
-                name="Аргументы",
-                value="\n".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
-                                 for key, params in command.usage.items()])
-            )
-
-        await self.context.send(embed=self.embed)
-
-    async def send_group_help(self, group):
-        """
-        Отправка информации о группе команды в тектовый канал
-
-        :param group: группа команд
-        """
-
-        self.embed.title = f"Команда \"{group.name}\""
-        self.embed.description = f"`{self.get_command_signature(group, args=True)}` - {group.short_doc}"
-
-        if group.aliases:
+        if command.aliases:
             self.embed.description += "\n Данную команду также можно вызвать как: " + ", ".join(
-                [f"`{self.clean_prefix}{i}`" for i in group.aliases]
+                [f"`{self.clean_prefix}{i}`" for i in command.aliases]
             )
 
-        if group.usage:
+        if command.usage:
             self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
             self.embed.add_field(
                 name="Аргументы",
                 value="\n".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
-                                 for key, params in group.usage.items()])
+                                 for key, params in command.usage.items()])
             )
 
-        if group.commands:
-            commands = []
+    async def send_command_help(self, command: commands.Command):
+        """
+        Sends info about command
 
-            for cmd in group.commands:
-                try:
-                    if await cmd.can_run(self.context):
-                        commands.append(f"`{self.get_command_signature(cmd, args=False)}` - {cmd.short_doc}")
-                except commands.CommandError:
-                    pass
-
-            if commands:
-                self.embed.add_field(
-                    name=f"Дополнительные команды",
-                    value="\n".join(commands),
-                    inline=False
-                )
-
+        :param command: bot's command
+        """
+        self.make_help(command)
         await self.context.send(embed=self.embed)
 
-    async def command_not_found(self, name):
+    async def send_group_help(self, group: commands.Group):
         """
-        Текст ошибки, при ненахождении введённой команды
+        Sends info about group of commands
 
-        :param name: название команды
-        :return: сообщение об ошибке
+        :param group: group of commands
         """
+        self.make_help(group)
+        await self.context.send(embed=self.embed)
 
-        return f"Я не нашёл команду `{name}`"
-
-    async def subcommand_not_found(self, command, string):
+    async def send_error_message(self, error: str):
         """
-        Текст ошибки, при ненахождении введённой сабкоманды
+        Sends error message
 
-        :param command: команда
-        :param string: название ошибочной сабкоманды, которую пытались вызвать
-        :return: сообщение об ошибке
+        :param error: info about error
         """
-
-        return f"Команда `{command.qualified_name} {string}` не найдена"
-
-    async def send_error_message(self, error):
-        """
-        Отправка ошибок, вызванные использованием команды
-
-        :param error: сообщение об ошибке
-        """
-
         self.embed.title = ":x: Ошибка"
         self.embed.description = error
         self.embed.colour = 0xDD2E44
 
         await self.get_destination().send(embed=self.embed)
+
+    async def command_not_found(self, name: str) -> str:
+        """
+        Returns error message when command doesn't exist
+
+        :param name: name of command that user tried to find
+        """
+        return f"Я не нашёл команду `{name}`"
+
+    async def subcommand_not_found(self, command: commands.Command, string: str) -> str:
+        """
+        Returns error message when subcommand doesn't exist
+
+        :param command: bot's command
+        :param string: name of subcommand that user tried to find
+        """
+        return f"Команда `{command.qualified_name} {string}` не найдена"
