@@ -34,3 +34,4 @@ class Group(commands.Group):
 class Cog(commands.Cog):
     def __init__(self, bot):
         self.client = bot
+        self.ru_name = self.qualified_name

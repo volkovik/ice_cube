@@ -7,7 +7,11 @@ from core.database import Server
 from core.templates import SuccessfulMessage
 
 
-class Settings(Cog, name="Настройки"):
+class Settings(Cog, name="settings"):
+    def __init__(self, bot):
+        super(Settings, self).__init__(bot)
+        self.ru_name = "настройки"
+
     @commands.command(
         cls=Command, name="prefix",
         usage={"prefix": ("префикс бота, который будет работать только на этом сервере (оставьте пустым, если хотите "

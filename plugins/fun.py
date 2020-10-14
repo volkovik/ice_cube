@@ -6,7 +6,11 @@ from core.commands import Cog, Command
 from core.templates import DefaultEmbed as Embed
 
 
-class Fun(Cog, name="Развлечения"):
+class Fun(Cog, name="fun"):
+    def __init__(self, bot):
+        super(Fun, self).__init__(bot)
+        self.ru_name = "развлечения"
+
     @commands.command(
         cls=Command, name="8ball",
         usage={"вопрос": ("закрытый вопрос (на который можно ответить да или нет)", True)}

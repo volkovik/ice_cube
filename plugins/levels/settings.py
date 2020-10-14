@@ -142,7 +142,11 @@ def roles_in_ignore_list_exist():
     return commands.check(predicate)
 
 
-class LevelsSettings(Cog, name="Настройки"):
+class LevelsSettings(Cog, name="settings"):
+    def __init__(self, bot):
+        super(LevelsSettings, self).__init__(bot)
+        self.ru_name = "настройки"
+
     @commands.group(name="setlevels", invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     async def levels_settings(self, ctx):

@@ -1,4 +1,5 @@
 import asyncio
+import os
 from enum import Enum
 from itertools import groupby
 from typing import Union
@@ -92,6 +93,7 @@ class SuccessfulMessage(Embed):
 
 class Help(HelpCommand):
     embed = DefaultEmbed()
+    gitbook_link = os.environ.get("GITBOOK_LINK")
 
     def get_destination(self) -> discord.TextChannel:
         """Returns channel for sending help"""
@@ -116,13 +118,17 @@ class Help(HelpCommand):
 
         return string
 
+    def get_gitbook_link(self, command: commands.Command) -> str:
+        """Returns link of command documentation in gitbook"""
+        return self.gitbook_link + f"{'-'.join(command.cog_name.split())}/" + "/".join(str(command).split())
+
     async def send_bot_help(self, mapping):
         """Sends list of bot's commands"""
         ctx = self.context
 
         # delete all commands without category and sort them
         def get_category(command):
-            return command.cog_name
+            return command.cog.ru_name.capitalize()
 
         filtered = await self.filter_commands(filter(
             lambda c: c.cog_name is not None, ctx.bot.commands),
@@ -133,11 +139,21 @@ class Help(HelpCommand):
 
         # configure embed
         self.embed.title = "Команды"
+        self.embed.description = f"Напишите `{self.clean_prefix}help <команда>`, чтобы получить информацию о команде" \
+                                 f", либо нажмите на одну из команд ниже"
+
+        if self.gitbook_link:
+            self.embed.url = self.gitbook_link
 
         for category, cmds in categories:
+            if self.gitbook_link:
+                text = [f"[`{self.get_command_signature(i)}`]({self.get_gitbook_link(i)})" for i in cmds]
+            else:
+                text = [f"`{self.get_command_signature(i)}`" for i in cmds]
+
             self.embed.add_field(
                 name=category,
-                value=" ".join([f"`{self.get_command_signature(i)}`" for i in cmds]),
+                value=" ".join(text),
                 inline=False
             )
 
@@ -147,6 +163,8 @@ class Help(HelpCommand):
         """Configure Embed for command or group of commands"""
         self.embed.title = f"Команда \"{command.name}\""
         self.embed.description = f"`{self.get_command_signature(command, args=True)}` - {command.short_doc}"
+        if self.gitbook_link:
+            self.embed.url = self.get_gitbook_link(command)
 
         if command.aliases:
             self.embed.description += "\n Данную команду также можно вызвать как: " + ", ".join(

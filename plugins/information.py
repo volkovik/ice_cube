@@ -10,7 +10,11 @@ from core.templates import SuccessfulMessage, DefaultEmbed as Embed, send_messag
 from core.converts import convert_status, convert_activity_type, convert_voice_region, convert_verification_level
 
 
-class Information(Cog, name="Информация"):
+class Information(Cog, name="info"):
+    def __init__(self, bot):
+        super(Information, self).__init__(bot)
+        self.ru_name = "информация"
+
     @commands.command(
         cls=Command, name="user",
         usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}

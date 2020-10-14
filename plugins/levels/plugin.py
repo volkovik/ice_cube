@@ -17,10 +17,11 @@ from .utils import (level_system_is_on, get_level, get_experience, format_levelu
                     DEFAULT_LEVELUP_MESSAGE_FOR_SERVER, DEFAULT_LEVELUP_MESSAGE_FOR_DM)
 
 
-class Levels(Cog, name="Уровни"):
+class Levels(Cog, name="levels"):
     def __init__(self, bot):
         self._buckets = CooldownMapping(Cooldown(1, 60, commands.BucketType.member))
         super().__init__(bot)
+        self.ru_name = "уровни"
 
     @commands.Cog.listener(name="on_message")
     async def when_message(self, message):

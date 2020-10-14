@@ -47,7 +47,11 @@ def room_is_not_locked():
     return commands.check(predicate)
 
 
-class Rooms(Cog, name="Приватные комнаты"):
+class Rooms(Cog, name="rooms"):
+    def __init__(self, bot):
+        super(Rooms, self).__init__(bot)
+        self.ru_name = "приватные комнаты"
+
     @commands.Cog.listener("on_voice_state_update")
     async def room_master(self, user, before, after):
         """Creating rooms and deleting rooms without users"""

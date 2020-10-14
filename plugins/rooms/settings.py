@@ -8,7 +8,11 @@ from core.commands import Cog, Command
 from core.templates import SuccessfulMessage, ErrorMessage, DefaultEmbed as Embed
 
 
-class RoomsSettings(Cog, name="Настройки"):
+class RoomsSettings(Cog, name="settings"):
+    def __init__(self, bot):
+        super(RoomsSettings, self).__init__(bot)
+        self.ru_name = "настройки"
+
     @commands.group(name="setrooms", invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     async def rooms_settings(self, ctx):
