@@ -15,15 +15,20 @@ class Information(Cog, name="info"):
         super(Information, self).__init__(bot)
         self.ru_name = "информация"
 
-    @commands.command(
-        cls=Command, name="user",
-        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}
-    )
+    @commands.command("user", Command)
     async def user_information(self, ctx, user: commands.MemberConverter = None):
         """
         Профиль пользователя
-        """
 
+        :note: Данный текст будет отображаться в профиле, независимо от того, на каком сервере вызвали команду
+
+        :argname user: пользователь
+        :argdesc user: имя, упоминание или ID пользователя
+        :argreq user: False
+
+        :example: `{prefix}user`  - информация о вашем аккаунте
+        :example: `{prefix}user @anyone`  - информация о пользователе anyone
+        """
         if user is None:
             user = ctx.author
 
@@ -79,14 +84,20 @@ class Information(Cog, name="info"):
 
         await ctx.send(embed=message)
 
-    @commands.command(
-        cls=Command, name="bio",
-        usage={"текст": ("описание, которое будет отображаться в вашем профиле (оставьте пустым, если хотите удалить "
-                         "уже существующий текст)", True)}
-    )
+    @commands.command("bio", Command)
     async def change_bio(self, ctx, *, text=None):
         """
-        Редактирование описания в профиле
+        Редактировать информацию о себе
+
+        :note: Данный текст будет отображаться в профиле, независимо от того, на каком сервере вызвали команду
+
+        :argname text: текст
+        :argdesc text: текст, который будет отображаться в профиле
+        :argnote text: Если аргумент оставить пустым, то информация в профиле удалиться (если она, конечно, есть)
+        :argreq text: True
+
+        :example: `.bio Я люблю клубнику!`  - поставить "Я люблю клубнику!" в вашем профиле
+        :example: `.bio` - удалить текущую информацию в профиле (если её нет, то будет ошибка)
         """
 
         session = Session()
@@ -119,10 +130,7 @@ class Information(Cog, name="info"):
         session.commit()
         session.close()
 
-    @commands.group(
-        cls=Group, name="rep", aliases=["rate"], invoke_without_command=True,
-        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
-    )
+    @commands.group("rep", cls=Group, aliases=["rate"], invoke_without_command=True)
     async def set_reputation_for_user(self, ctx, user: commands.MemberConverter):
         """
         Поставить оценку пользователю
@@ -234,10 +242,7 @@ class Information(Cog, name="info"):
 
         session.close()
 
-    @set_reputation_for_user.command(
-        cls=Command, name="+", aliases=["up"],
-        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
-    )
+    @set_reputation_for_user.command("+", Command, aliases=["up"])
     async def rate_up_user(self, ctx, user: commands.MemberConverter):
         """
         Поставить положительную оценку пользователю или изменить на положительную
@@ -273,10 +278,7 @@ class Information(Cog, name="info"):
         session.commit()
         session.close()
 
-    @set_reputation_for_user.command(
-        cls=Command, name="-", aliases=["down"],
-        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
-    )
+    @set_reputation_for_user.command("-", Command, aliases=["down"])
     async def rate_down_user(self, ctx, user: commands.MemberConverter):
         """
         Поставить отрицательную оценку пользователю или изменить на отрицательную
@@ -312,10 +314,7 @@ class Information(Cog, name="info"):
 
         session.close()
 
-    @set_reputation_for_user.command(
-        cls=Command, name="remove",
-        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", True)}
-    )
+    @set_reputation_for_user.command("remove", Command)
     async def remove_score_user(self, ctx, user: commands.MemberConverter):
         """
         Удалить поставленную оценку у пользователя
@@ -347,16 +346,12 @@ class Information(Cog, name="info"):
 
         session.close()
 
-    @commands.command(cls=Command, name="server")
+    @commands.command("server", Command)
     async def server_information(self, ctx):
-        """
-        Основная информация о сервере
-        """
-
+        """Основная информация о сервере"""
         server = ctx.guild
 
         region = convert_voice_region(server.region)
-        verification = convert_verification_level(server.verification_level)
         created_at = server.created_at.strftime("%d.%m.%Y, %H:%M:%S")
 
         def members_counter():
@@ -405,12 +400,9 @@ class Information(Cog, name="info"):
 
         await ctx.send(embed=message)
 
-    @commands.command(cls=Command, name="info")
+    @commands.command("info", Command)
     async def about_bot(self, ctx):
-        """
-        Информация о боте
-        """
-
+        """Информация о боте"""
         app = await self.client.application_info()
 
         message = Embed(

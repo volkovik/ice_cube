@@ -12,11 +12,7 @@ class Settings(Cog, name="settings"):
         super(Settings, self).__init__(bot)
         self.ru_name = "настройки"
 
-    @commands.command(
-        cls=Command, name="prefix",
-        usage={"prefix": ("префикс бота, который будет работать только на этом сервере (оставьте пустым, если хотите "
-                          "удалить уже существующий префикс)", True)}
-    )
+    @commands.command("prefix", Command)
     @commands.has_permissions(administrator=True)
     async def set_prefix_server(self, ctx, prefix=None):
         """

@@ -23,7 +23,7 @@ class Levels(Cog, name="levels"):
         super().__init__(bot)
         self.ru_name = "уровни"
 
-    @commands.Cog.listener(name="on_message")
+    @commands.Cog.listener("on_message")
     async def when_message(self, message):
         context = await self.client.get_context(message)
 
@@ -142,10 +142,7 @@ class Levels(Cog, name="levels"):
 
         session.close()
 
-    @commands.command(
-        cls=Command, name="rank",
-        usage={"пользователь": ("упоминание или ID участника сервера, чтобы посмотреть его профиль", False)}
-    )
+    @commands.command("rank", Command)
     @level_system_is_on()
     async def get_current_level(self, ctx, user: commands.MemberConverter = None):
         """
@@ -188,10 +185,7 @@ class Levels(Cog, name="levels"):
 
         await ctx.send(embed=message)
 
-    @commands.command(
-        cls=Command, name="top",
-        usage={"страница": ("номер страницы топа (если указанная страницы нет, то вернёт самую первую)", False)}
-    )
+    @commands.command("top", Command)
     @level_system_is_on()
     async def get_leaders_on_server(self, ctx, page: int = 1):
         """
@@ -281,14 +275,7 @@ class Levels(Cog, name="levels"):
     
                     await message.edit(embed=embed)
 
-    @commands.command(
-        cls=Command, name="editlevel",
-        usage={
-            "уровень": ("уровень, который будет поставлен для участника", True),
-            "пользователь": ("упоминание, ID или никнейм пользователя (оставьте пустым, если хотите изменить уровень "
-                             "себе)", True),
-        }
-    )
+    @commands.command("editlevel", Command)
     @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def edit_user_level(self, ctx, level: int = None, user: commands.MemberConverter = None):

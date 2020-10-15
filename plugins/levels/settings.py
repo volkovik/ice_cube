@@ -147,7 +147,7 @@ class LevelsSettings(Cog, name="settings"):
         super(LevelsSettings, self).__init__(bot)
         self.ru_name = "настройки"
 
-    @commands.group(name="setlevels", invoke_without_command=True)
+    @commands.group("setlevels", cls=Group, invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     async def levels_settings(self, ctx):
         """
@@ -170,7 +170,7 @@ class LevelsSettings(Cog, name="settings"):
 
         await ctx.send(embed=embed)
 
-    @levels_settings.command(cls=Command, name="enable")
+    @levels_settings.command("enable", Command)
     @commands.has_permissions(administrator=True)
     @level_system_is_off()
     async def enable_levels_system(self, ctx):
@@ -189,7 +189,7 @@ class LevelsSettings(Cog, name="settings"):
 
         await ctx.send(embed=message)
 
-    @levels_settings.command(cls=Command, name="disable")
+    @levels_settings.command("disable", Command)
     @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def disable_levels_system(self, ctx):
@@ -230,7 +230,7 @@ class LevelsSettings(Cog, name="settings"):
 
         session.close()
 
-    @levels_settings.group(name="message", invoke_without_command=True)
+    @levels_settings.group("message", cls=Group, invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def levelup_message(self, ctx):
@@ -306,7 +306,7 @@ class LevelsSettings(Cog, name="settings"):
 
         await ctx.send(embed=embed)
 
-    @levelup_message.command(name="enable")
+    @levelup_message.command("enable", Command)
     @commands.has_permissions(administrator=True)
     @notify_of_levelup_is_off()
     async def enable_notify_of_levelup(self, ctx):
@@ -322,7 +322,7 @@ class LevelsSettings(Cog, name="settings"):
 
         await ctx.send(embed=SuccessfulMessage("Вы включили оповещение о новом уровне пользователя"))
 
-    @levelup_message.command(name="disable")
+    @levelup_message.command("disable", Command)
     @commands.has_permissions(administrator=True)
     @notify_of_levelup_is_on()
     async def disable_notify_of_levelup(self, ctx):
@@ -338,10 +338,7 @@ class LevelsSettings(Cog, name="settings"):
 
         await ctx.send(embed=SuccessfulMessage("Вы выключили оповещение о новом уровне пользователя"))
 
-    @levelup_message.group(
-        cls=Group, name="edit", invoke_without_command=True,
-        usage={"текст": ("текст, который будет отправляться по достижению нового уровня пользователем", True)}
-    )
+    @levelup_message.group("edit", cls=Group,  invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     @notify_of_levelup_is_on()
     async def edit_levelup_message(self, ctx, *, text=None):
@@ -364,7 +361,7 @@ class LevelsSettings(Cog, name="settings"):
 
         await ctx.send(embed=SuccessfulMessage("Вы изменили текст сообщения"))
 
-    @edit_levelup_message.command(cls=Command, name="default")
+    @edit_levelup_message.command("default", Command)
     @commands.has_permissions(administrator=True)
     @levelup_message_is_custom()
     async def reset_levelup_message(self, ctx):
@@ -380,10 +377,7 @@ class LevelsSettings(Cog, name="settings"):
 
         await ctx.send(embed=SuccessfulMessage("Вы сбросили текст сообщения"))
 
-    @levelup_message.group(
-        cls=Group, name="send", invoke_without_command=True,
-        usage={"канал": ("упоминание, ID или название текстового канала", True)}
-    )
+    @levelup_message.group("send", cls=Group, invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     @notify_of_levelup_is_on()
     async def edit_levelup_message_destination(self, ctx, channel=None):
@@ -417,7 +411,7 @@ class LevelsSettings(Cog, name="settings"):
 
         session.close()
 
-    @edit_levelup_message_destination.command(name="dm")
+    @edit_levelup_message_destination.command("dm", Command)
     @commands.has_permissions(administrator=True)
     @levelup_message_destination_is_not_dm()
     async def set_levelup_message_destination_as_user_dm(self, ctx):
@@ -437,7 +431,7 @@ class LevelsSettings(Cog, name="settings"):
         await ctx.send(embed=SuccessfulMessage("Теперь сообщения о новом уровне будут присылаться в ЛС "
                                                "пользователю"))
 
-    @edit_levelup_message_destination.command(name="current")
+    @edit_levelup_message_destination.command("current", Command)
     @commands.has_permissions(administrator=True)
     @levelup_message_destination_is_not_current()
     async def set_levelup_message_destination_as_channel_where_reached_new_level(self, ctx):
@@ -457,7 +451,7 @@ class LevelsSettings(Cog, name="settings"):
         await ctx.send(embed=SuccessfulMessage("Теперь сообщения о новом уровне будут присылаться в том же канале "
                                                "где пользователь достиг нового уровня"))
 
-    @levels_settings.group(name="award", invoke_without_command=True)
+    @levels_settings.group("award", cls=Group, invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def awards_for_levels(self, ctx):
@@ -516,13 +510,7 @@ class LevelsSettings(Cog, name="settings"):
 
         await ctx.send(embed=embed)
 
-    @awards_for_levels.command(
-        cls=Command, name="add",
-        usage={
-            "роль": ("упоминание, ID или название роли", True),
-            "уровень": ("по достижению этого уровня, пользователь получит роль", True)
-        }
-    )
+    @awards_for_levels.command("add", Command)
     @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def add_award_for_level(self, ctx, role: commands.RoleConverter = None, level: int = None):
@@ -570,13 +558,7 @@ class LevelsSettings(Cog, name="settings"):
             await ctx.send(embed=SuccessfulMessage(f"Вы добавили роль `{role.name}` в качестве награды по достижению "
                                                    f"`{level} уровня`"))
 
-    @awards_for_levels.command(
-        cls=Command, name="edit",
-        usage={
-            "роль": ("упоминание, ID или название роли", True),
-            "уровень": ("по достижению этого уровня, пользователь получит роль", True)
-        }
-    )
+    @awards_for_levels.command("edit", Command)
     @commands.has_permissions(administrator=True)
     @level_awards_exist()
     async def edit_award_for_level(self, ctx, role: commands.RoleConverter = None, level: int = None):
@@ -612,10 +594,7 @@ class LevelsSettings(Cog, name="settings"):
             await ctx.send(embed=SuccessfulMessage(f"Теперь роль `{role.name}` можно получить по достижению `{level} "
                                                    f"уровня`"))
 
-    @awards_for_levels.command(
-        cls=Command, name="remove",
-        usage={"роль": ("упоминание, ID или название текстового канала", True)}
-    )
+    @awards_for_levels.command("remove", Command)
     @commands.has_permissions(administrator=True)
     @level_awards_exist()
     async def remove_award_for_level(self, ctx, role: commands.RoleConverter = None):
@@ -639,7 +618,7 @@ class LevelsSettings(Cog, name="settings"):
 
             await ctx.send(embed=SuccessfulMessage(f"Вы удалили роль `{role.name}` из списка наград за уровень"))
 
-    @awards_for_levels.command(name="reset")
+    @awards_for_levels.command("reset", Command)
     @commands.has_permissions(administrator=True)
     @level_awards_exist()
     async def reset_awards_for_levels(self, ctx):
@@ -674,7 +653,7 @@ class LevelsSettings(Cog, name="settings"):
 
         session.close()
 
-    @levels_settings.group(name="ignore", invoke_without_command=True)
+    @levels_settings.group("ignore", cls=Group, invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def ignore_list(self, ctx):
@@ -746,7 +725,7 @@ class LevelsSettings(Cog, name="settings"):
 
         await ctx.send(embed=embed)
 
-    @ignore_list.group(name="channel", invoke_without_command=True)
+    @ignore_list.group("channel", cls=Group, invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def channel_ignore_list(self, ctx):
@@ -756,10 +735,7 @@ class LevelsSettings(Cog, name="settings"):
 
         await ctx.send_help(ctx.command)
 
-    @channel_ignore_list.command(
-        cls=Command, name="add",
-        usage={"канал": ("упоминание, ID или название текстового канала", True)}
-    )
+    @channel_ignore_list.command("add", Command)
     @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def add_channel_to_ignore_list(self, ctx, channel: commands.TextChannelConverter):
@@ -788,10 +764,7 @@ class LevelsSettings(Cog, name="settings"):
 
             await ctx.send(embed=SuccessfulMessage("Вы добавили текстовый канал в чёрный список"))
 
-    @channel_ignore_list.command(
-        cls=Command, name="remove",
-        usage={"канал": ("упоминание, ID или название текстового канала", True)}
-    )
+    @channel_ignore_list.command("remove", Command)
     @commands.has_permissions(administrator=True)
     @channels_in_ignore_list_exist()
     async def remove_channel_from_ignore_list(self, ctx, channel: commands.TextChannelConverter):
@@ -819,7 +792,7 @@ class LevelsSettings(Cog, name="settings"):
 
             await ctx.send(embed=SuccessfulMessage("Вы удалили текстовый канал из чёрного списка"))
 
-    @channel_ignore_list.command(name="reset")
+    @channel_ignore_list.command("reset", Command)
     @commands.has_permissions(administrator=True)
     @channels_in_ignore_list_exist()
     async def reset_ignore_list_for_channels(self, ctx):
@@ -834,7 +807,7 @@ class LevelsSettings(Cog, name="settings"):
 
         await ctx.send(embed=SuccessfulMessage("Вы сбросили чёрный список для тектовых каналов"))
 
-    @ignore_list.group(name="role", invoke_without_command=True)
+    @ignore_list.group("role", cls=Group, invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def role_ignore_list(self, ctx):
@@ -844,10 +817,7 @@ class LevelsSettings(Cog, name="settings"):
 
         await ctx.send_help(ctx.command)
 
-    @role_ignore_list.command(
-        cls=Command, name="add",
-        usage={"роль": ("упоминание, ID или название роли", True)}
-    )
+    @role_ignore_list.command("add", Command)
     @commands.has_permissions(administrator=True)
     @level_system_is_on()
     async def add_role_to_ignore_list(self, ctx, role: commands.RoleConverter):
@@ -876,10 +846,7 @@ class LevelsSettings(Cog, name="settings"):
 
             await ctx.send(embed=SuccessfulMessage("Вы добавили роль в чёрный список"))
 
-    @role_ignore_list.command(
-        cls=Command, name="remove",
-        usage={"роль": ("упоминание, ID или название роли", True)}
-    )
+    @role_ignore_list.command("remove", Command)
     @commands.has_permissions(administrator=True)
     @roles_in_ignore_list_exist()
     async def remove_role_from_ignore_list(self, ctx, role: commands.RoleConverter):
@@ -907,7 +874,7 @@ class LevelsSettings(Cog, name="settings"):
 
             await ctx.send(embed=SuccessfulMessage("Вы удалили роль из чёрного списка"))
 
-    @role_ignore_list.command(name="reset")
+    @role_ignore_list.command("reset", Command)
     @commands.has_permissions(administrator=True)
     @roles_in_ignore_list_exist()
     async def reset_ignore_list_for_roles(self, ctx):

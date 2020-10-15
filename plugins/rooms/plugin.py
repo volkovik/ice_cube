@@ -5,7 +5,7 @@ from discord import PermissionOverwrite as Permissions
 from discord.ext import commands
 from discord.ext.commands import CommandError
 
-from core.commands import Cog, Command
+from core.commands import Cog, Command, Group
 from core.database import UserPermissionsOfRoom
 from core.templates import PermissionsForRoom, DefaultEmbed as Embed, SuccessfulMessage
 from main import Session
@@ -222,7 +222,7 @@ class Rooms(Cog, name="rooms"):
 
         session.close()
 
-    @commands.group(name="room", aliases=["r"])
+    @commands.group("room", cls=Group, aliases=["r"])
     async def room_settings(self, ctx):
         """Настройка вашей приватной комнаты"""
         user = ctx.author
@@ -297,7 +297,7 @@ class Rooms(Cog, name="rooms"):
 
         session.close()
 
-    @room_settings.command(cls=Command, name="lock")
+    @room_settings.command("lock", Command)
     @room_is_not_locked()
     async def lock_room(self, ctx):
         """Закрыть комнату от посторонних участников"""
@@ -315,7 +315,7 @@ class Rooms(Cog, name="rooms"):
 
         await ctx.send(embed=SuccessfulMessage("Я закрыл вашу комнату"))
 
-    @room_settings.command(cls=Command, name="unlock")
+    @room_settings.command("unlock", Command)
     @room_is_locked()
     async def unlock_room(self, ctx):
         """Открыть комнату для посторонних участников"""
@@ -333,11 +333,7 @@ class Rooms(Cog, name="rooms"):
 
         await ctx.send(embed=SuccessfulMessage("Я открыл вашу комнату"))
 
-    @room_settings.command(
-        cls=Command, name="limit",
-        usage={"лимит": ("максимальное количество участников, которое может подключиться к комнате (если оставить "
-                         "пустым, лимит сбросится)", True)}
-    )
+    @room_settings.command("limit", Command)
     async def room_users_limit(self, ctx, limit: int = 0):
         """Поставить лимит пользователей для комнаты"""
         user = ctx.author
@@ -374,11 +370,7 @@ class Rooms(Cog, name="rooms"):
 
             await ctx.send(embed=message)
 
-    @room_settings.command(
-        cls=Command, name="name",
-        usage={"название": ("новое название комнаты (если оставить пустым, то название комнаты изменится на ваш ник)",
-                            True)}
-    )
+    @room_settings.command("name", Command)
     async def rename_room(self, ctx, *, name=None):
         """Измененить название команты"""
         user = ctx.author
@@ -413,11 +405,7 @@ class Rooms(Cog, name="rooms"):
 
             await ctx.send(embed=message)
 
-    @room_settings.command(
-        cls=Command, name="bitrate",
-        usage={"битрейт": ("кбит/с, чем больше, тем лучше качество звука (если оставить пустым, битрейт будет 64)",
-                           True)}
-    )
+    @room_settings.command("bitrate", Command)
     async def change_room_bitrate(self, ctx, bitrate: int = 64):
         """Изменить битрейт (качество звука) комнаты"""
         user = ctx.author
@@ -453,10 +441,7 @@ class Rooms(Cog, name="rooms"):
 
             await ctx.send(embed=message)
 
-    @room_settings.command(
-        cls=Command, name="kick",
-        usage={"пользователь": ("упоминание или ID участника сервера", True)}
-    )
+    @room_settings.command("kick", Command)
     async def kick_member_from_room(self, ctx, user: commands.MemberConverter = None):
         """Кикнуть пользователя из вашей комнаты"""
         author = ctx.author
@@ -475,10 +460,7 @@ class Rooms(Cog, name="rooms"):
         else:
             raise CommandError("Вы не находитесь в своей комнате")
 
-    @room_settings.command(
-        cls=Command, name="allow",
-        usage={"пользователь": ("упоминание или ID участника сервера", True)}
-    )
+    @room_settings.command("allow", Command)
     async def allow_member_to_join_room(self, ctx, user: commands.MemberConverter):
         """Дать доступ пользователю заходить в комнату"""
         owner = ctx.author
@@ -504,10 +486,7 @@ class Rooms(Cog, name="rooms"):
 
             await ctx.send(embed=SuccessfulMessage(f"Я дал доступ `{user.display_name}` к вашей комнате"))
 
-    @room_settings.command(
-        cls=Command, name="ban",
-        usage={"пользователь": ("упоминание или ID участника сервера", True)}
-    )
+    @room_settings.command("ban", Command)
     async def ban_member_from_room(self, ctx, user: commands.MemberConverter):
         """Заблокировать доступ пользователю заходить в комнату"""
         owner = ctx.author
@@ -533,10 +512,7 @@ class Rooms(Cog, name="rooms"):
 
             await ctx.send(embed=SuccessfulMessage(f"Я заброкировал доступ у `{user.display_name}` к вашей комнате"))
 
-    @room_settings.command(
-        cls=Command, name="remove",
-        usage={"пользователь": ("упоминание или ID участника сервера", True)}
-    )
+    @room_settings.command("remove", Command)
     async def set_default_permissions_for_member(self, ctx, user: commands.MemberConverter):
         """Поставить доступ к каналу у пользователя по умолчанию"""
         owner = ctx.author
@@ -558,7 +534,7 @@ class Rooms(Cog, name="rooms"):
 
             await ctx.send(embed=SuccessfulMessage(f"Я сбросил права доступа у `{user.display_name}` к вашей комнате"))
 
-    @room_settings.command(name="reset")
+    @room_settings.command("reset", Command)
     async def reset_room_settings(self, ctx):
         """Сбросить все настройки комнаты"""
         owner = ctx.author

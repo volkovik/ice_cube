@@ -4,7 +4,7 @@ from discord.ext.commands import CommandError
 
 from main import Session
 from core.database import ServerSettingsOfRooms
-from core.commands import Cog, Command
+from core.commands import Cog, Command, Group
 from core.templates import SuccessfulMessage, ErrorMessage, DefaultEmbed as Embed
 
 
@@ -13,7 +13,7 @@ class RoomsSettings(Cog, name="settings"):
         super(RoomsSettings, self).__init__(bot)
         self.ru_name = "настройки"
 
-    @commands.group(name="setrooms", invoke_without_command=True)
+    @commands.group("setrooms", cls=Group, invoke_without_command=True)
     @commands.has_permissions(administrator=True)
     async def rooms_settings(self, ctx):
         """
@@ -47,7 +47,7 @@ class RoomsSettings(Cog, name="settings"):
 
         session.close()
 
-    @rooms_settings.command(cls=Command, name="enable")
+    @rooms_settings.command("enable", Command)
     @commands.has_permissions(administrator=True)
     async def create_rooms_system(self, ctx):
         """
@@ -76,7 +76,7 @@ class RoomsSettings(Cog, name="settings"):
         session.commit()
         session.close()
 
-    @rooms_settings.command(cls=Command, name="disable")
+    @rooms_settings.command("disable", Command)
     @commands.has_permissions(administrator=True)
     async def remove_rooms_system(self, ctx):
         """

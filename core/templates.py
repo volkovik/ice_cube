@@ -9,6 +9,8 @@ from discord import Embed
 from discord.ext import commands
 from discord.ext.commands import HelpCommand
 
+from core.commands import Command, Group
+
 
 async def send_message_with_reaction_choice(client: commands.Bot, ctx: commands.Context, embed: Embed, emojis: dict):
     """
@@ -99,11 +101,11 @@ class Help(HelpCommand):
         """Returns channel for sending help"""
         return self.context.channel
 
-    async def prepare_help_command(self, ctx, command=None):
+    async def prepare_help_command(self, ctx: commands.Context, command: Union[Command, Group] = None):
         """Create a new Embed"""
         self.embed = DefaultEmbed()
 
-    def get_command_signature(self, command: commands.Command, args=False) -> str:
+    def get_command_signature(self, command: Union[Command, Group], args=False) -> str:
         """
         Returns command signature
 
@@ -118,7 +120,7 @@ class Help(HelpCommand):
 
         return string
 
-    def get_gitbook_link(self, command: commands.Command) -> str:
+    def get_gitbook_link(self, command: Union[Command, Group]) -> str:
         """Returns link of command documentation in gitbook"""
         return self.gitbook_link + f"{'-'.join(command.cog_name.split())}/" + "/".join(str(command).split())
 
@@ -138,9 +140,9 @@ class Help(HelpCommand):
         categories = groupby(filtered, key=get_category)
 
         # configure embed
-        self.embed.title = "Команды"
-        self.embed.description = f"Напишите `{self.clean_prefix}help <команда>`, чтобы получить информацию о команде" \
-                                 f", либо нажмите на одну из команд ниже"
+        self.embed.title = ":bookmark: Команды"
+        self.embed.description = f"Напишите `{self.clean_prefix}help <команда>` для подробной информации. " \
+                                 f"Либо нажмите на нужную команду ниже"
 
         if self.gitbook_link:
             self.embed.url = self.gitbook_link
@@ -159,27 +161,47 @@ class Help(HelpCommand):
 
         await self.get_destination().send(embed=self.embed)
 
-    def make_help(self, command: Union[commands.Command, commands.Group]):
+    def make_help(self, command: Union[Command, Group]):
         """Configure Embed for command or group of commands"""
-        self.embed.title = f"Команда \"{command.name}\""
+        self.embed.title = f":bookmark: Команда \"{command.name}\""
         self.embed.description = f"`{self.get_command_signature(command, args=True)}` - {command.short_doc}"
         if self.gitbook_link:
             self.embed.url = self.get_gitbook_link(command)
 
+        if command.notes:
+            self.embed.add_field(
+                name="Примечание",
+                value="\n".join([f"**{i}**" for i in command.notes])
+            )
+
         if command.aliases:
-            self.embed.description += "\n Данную команду также можно вызвать как: " + ", ".join(
+            self.embed.description += "\n **Данную команду также можно вызвать как:** " + ", ".join(
                 [f"`{self.clean_prefix}{i}`" for i in command.aliases]
             )
 
-        if command.usage:
+        if command.arguments:
             self.embed.set_footer(text="Виды аргументов: <arg> - обязательный, [arg] - необязятельный")
+
+            args = []
+
+            for k, v in command.arguments.items():
+                args.append((f"`<{k}>`" if v[1] is True else f"`[{k}]`") + f" - {v[0]}" +
+                            (f"\n**{v[2]}**" if v[2] else ""))
+
             self.embed.add_field(
                 name="Аргументы",
-                value="\n".join([(f"`<{key}>`" if params[1] is True else f"`[{key}]`") + f" - {params[0]}"
-                                 for key, params in command.usage.items()])
+                value="\n".join(args),
+                inline=False
             )
 
-    async def send_command_help(self, command: commands.Command):
+        if command.examples:
+            self.embed.add_field(
+                name="Примеры",
+                value="\n".join([i.format(prefix=self.clean_prefix) for i in command.examples]),
+                inline=False
+            )
+
+    async def send_command_help(self, command: Command):
         """
         Sends info about command
 
@@ -188,7 +210,7 @@ class Help(HelpCommand):
         self.make_help(command)
         await self.context.send(embed=self.embed)
 
-    async def send_group_help(self, group: commands.Group):
+    async def send_group_help(self, group: Group):
         """
         Sends info about group of commands
 
@@ -217,7 +239,7 @@ class Help(HelpCommand):
         """
         return f"Я не нашёл команду `{name}`"
 
-    async def subcommand_not_found(self, command: commands.Command, string: str) -> str:
+    async def subcommand_not_found(self, command: Union[Command, Group], string: str) -> str:
         """
         Returns error message when subcommand doesn't exist
 

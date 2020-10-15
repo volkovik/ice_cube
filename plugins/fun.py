@@ -11,10 +11,7 @@ class Fun(Cog, name="fun"):
         super(Fun, self).__init__(bot)
         self.ru_name = "развлечения"
 
-    @commands.command(
-        cls=Command, name="8ball",
-        usage={"вопрос": ("закрытый вопрос (на который можно ответить да или нет)", True)}
-    )
+    @commands.command("8ball", Command)
     async def eight_ball_game(self, ctx, *, question=None):
         """
         Игра "Волшебный шар"

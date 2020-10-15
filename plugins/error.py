@@ -7,7 +7,7 @@ from core.commands import Cog
 
 
 class ErrorHandler(Cog):
-    @commands.Cog.listener(name="on_command_error")
+    @commands.Cog.listener("on_command_error")
     async def error_handler(self, ctx, error):
         """
         Обработка ошибок, вызванные во время использования бота
