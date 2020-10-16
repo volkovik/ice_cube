@@ -20,8 +20,6 @@ class Information(Cog, name="info"):
         """
         Профиль пользователя
 
-        :note: Данный текст будет отображаться в профиле, независимо от того, на каком сервере вызвали команду
-
         :argname user: пользователь
         :argdesc user: имя, упоминание или ID пользователя
         :argreq user: False
@@ -99,7 +97,6 @@ class Information(Cog, name="info"):
         :example: `.bio Я люблю клубнику!`  - поставить "Я люблю клубнику!" в вашем профиле
         :example: `.bio` - удалить текущую информацию в профиле (если её нет, то будет ошибка)
         """
-
         session = Session()
 
         user_from_db = session.query(User).filter_by(user_id=str(ctx.author.id)).first()
@@ -134,8 +131,13 @@ class Information(Cog, name="info"):
     async def set_reputation_for_user(self, ctx, user: commands.MemberConverter):
         """
         Поставить оценку пользователю
-        """
 
+        :argname user: пользователь
+        :argdesc user: имя, упоминание или ID пользователя
+        :argreq user: True
+
+        :example: `.rep @anyone`  - поставить оценку пользователю anyone
+        """
         if user == ctx.author:
             raise CommandError("Вы не можете дать оценку самому себе")
         elif user.bot:
@@ -245,9 +247,14 @@ class Information(Cog, name="info"):
     @set_reputation_for_user.command("+", Command, aliases=["up"])
     async def rate_up_user(self, ctx, user: commands.MemberConverter):
         """
-        Поставить положительную оценку пользователю или изменить на положительную
-        """
+        Поставить положительную оценку пользователю
 
+        :argname user: пользователь
+        :argdesc user: имя, упоминание или ID пользователя
+        :argreq user: True
+
+        :example: `.rep + @anyone`  - поставить положительную оценку пользователю anyone
+        """
         if user == ctx.author:
             raise CommandError("Вы не можете дать оценку самому себе")
         elif user.bot:
@@ -281,9 +288,14 @@ class Information(Cog, name="info"):
     @set_reputation_for_user.command("-", Command, aliases=["down"])
     async def rate_down_user(self, ctx, user: commands.MemberConverter):
         """
-        Поставить отрицательную оценку пользователю или изменить на отрицательную
-        """
+        Поставить отрицательную оценку пользователю
 
+        :argname user: пользователь
+        :argdesc user: имя, упоминание или ID пользователя
+        :argreq user: True
+
+        :example: `.rep - @anyone`  - поставить отрицательную оценку пользователю anyone
+        """
         if user == ctx.author:
             raise CommandError("Вы не можете дать оценку самому себе")
         elif user.bot:
@@ -317,9 +329,14 @@ class Information(Cog, name="info"):
     @set_reputation_for_user.command("remove", Command)
     async def remove_score_user(self, ctx, user: commands.MemberConverter):
         """
-        Удалить поставленную оценку у пользователя
-        """
+        Удалить оценку у пользователя
 
+        :argname user: пользователь
+        :argdesc user: имя, упоминание или ID пользователя
+        :argreq user: True
+
+        :example: `.rep remove @anyone`  -  удалить оценку у пользователя anyone
+        """
         if user == ctx.author:
             raise CommandError("Вы не можете удалить оценку самому себе")
         elif user.bot:

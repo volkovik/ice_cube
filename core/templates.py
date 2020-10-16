@@ -175,8 +175,8 @@ class Help(HelpCommand):
             )
 
         if command.aliases:
-            self.embed.description += "\n **Данную команду также можно вызвать как:** " + ", ".join(
-                [f"`{self.clean_prefix}{i}`" for i in command.aliases]
+            self.embed.description += "\n **Использовать данную команду можно и под другими названиями:** " + ", ".join(
+                [f"`{i}`" for i in command.aliases]
             )
 
         if command.arguments:
@@ -217,6 +217,26 @@ class Help(HelpCommand):
         :param group: group of commands
         """
         self.make_help(group)
+
+        if group.commands:
+            cmds = []
+
+            for cmd in group.commands:
+                try:
+                    if await cmd.can_run(self.context):
+                        if self.gitbook_link:
+                            cmds.append(f"[`{self.get_command_signature(cmd)}`]({self.get_gitbook_link(cmd)})")
+                        else:
+                            cmds.append(f"`{self.get_command_signature(cmd, args=False)} - {cmd.short_doc}`")
+                except commands.CommandError:
+                    pass
+
+            self.embed.add_field(
+                name="Дочерние команды",
+                value=" ".join(cmds),
+                inline=False
+            )
+
         await self.context.send(embed=self.embed)
 
     async def send_error_message(self, error: str):
