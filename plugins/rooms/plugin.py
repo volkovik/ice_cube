@@ -91,6 +91,13 @@ class Rooms(Cog, name="Приватные комнаты"):
             if creator_rooms == channel:
                 # user's settings from database
                 user_settings = get_user_settings(session, server, user)
+
+                max_bitrate = int(server.bitrate_limit // 1000)
+
+                if max_bitrate < user_settings.bitrate:
+                    user_settings.bitrate = max_bitrate
+                    session.commit()
+
                 everyone = server.default_role
 
                 # if user's settings dont't exist, create default settings and write them in database
