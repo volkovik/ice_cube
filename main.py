@@ -11,29 +11,33 @@ from core.database import Base, Server
 
 __version__ = "0.3.1"
 
-# Основные константы
+# Environment variables
 DEV_MODE = os.environ.get("DEV_MODE") == "True"
 DEFAULT_PREFIX = "." if not DEV_MODE else ">"
 SAVE_LOGS = os.environ.get("SAVE_LOGS") == "True"
 PRINT_LOG_TIME = os.environ.get("PRINT_LOG_TIME") == "True"
 
-# База данных
+# Database
 ENGINE_DB = sqlalchemy.create_engine(os.environ.get("DATABASE_URL"))
 Session = sessionmaker(bind=ENGINE_DB)
 Base.metadata.create_all(bind=ENGINE_DB)
 
-# Конфигурация логирования
+# Logs settings
+
+# Print logs time
 if PRINT_LOG_TIME:
     output_log_format = "%(asctime)s | %(levelname)s:%(name)s: %(message)s"
 else:
     output_log_format = "%(levelname)s:%(name)s: %(message)s"
 date_format = "%d.%m.%Y %H:%M:%S"
 
+# Printing debug logs
 if DEV_MODE:
     level = logging.DEBUG
 else:
     level = logging.INFO
 
+# Set settings
 logging.basicConfig(
     level=level,
     format=output_log_format,
@@ -56,31 +60,25 @@ if SAVE_LOGS:
     discord_logger.addHandler(handler)
 
 
-def get_prefix(bot, message):
+def get_prefix(bot: commands.Bot, message: commands.Context) -> list:
     """
-    Возвращение префикса из базы данных или стандартного, а также префикс в виде упоминания бота
-
-    :param bot: класс бота
-    :param message: сообщение
-    :return: конечный префикс
+    Returns prefixes like bot mention and either prefix default prefix defined by env variable or prefix from database
     """
-
     prefix = DEFAULT_PREFIX
 
     if message.guild:
         session = Session()
-
         server_from_db = session.query(Server).filter_by(server_id=str(message.guild.id)).first()
+        session.close()
 
+        # If data from db exists, we set prefix from db
         if server_from_db is not None and server_from_db.prefix is not None:
             prefix = server_from_db.prefix
-
-        session.close()
 
     return commands.when_mentioned_or(prefix)(bot, message)
 
 
-# Настройка бота
+# Bot settings
 client = commands.Bot(command_prefix=get_prefix)
 client.help_command = Help()
 
